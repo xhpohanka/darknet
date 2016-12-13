@@ -6,8 +6,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined OPENCV
+#include <opencv2/videoio/videoio_c.h>
+#endif
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+image get_image_from_stream(CvCapture *cap);
 
 list *get_paths(char *filename)
 {
@@ -738,6 +742,9 @@ void *load_thread(void *ptr)
         *a.d = load_data_compare(a.n, a.paths, a.m, a.classes, a.w, a.h);
     } else if (a.type == IMAGE_DATA){
         *(a.im) = load_image_color(a.path, 0, 0);
+        *(a.resized) = resize_image(*(a.im), a.w, a.h);
+    } else if (a.type == VIDEO_DATA){
+        *(a.im) = get_image_from_stream(a.cap);
         *(a.resized) = resize_image(*(a.im), a.w, a.h);
     } else if (a.type == TAG_DATA){
         *a.d = load_data_tag(a.paths, a.n, a.m, a.classes, a.min, a.max, a.size, a.angle, a.aspect, a.hue, a.saturation, a.exposure);

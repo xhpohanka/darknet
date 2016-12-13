@@ -236,6 +236,7 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
     int j;
     list *options = read_data_cfg(datacfg);
     char *valid_images = option_find_str(options, "valid", "data/train.list");
+    char *vfile = option_find_str(options, "valid_video", "");
     char *name_list = option_find_str(options, "names", "data/names.list");
     char *prefix = option_find_str(options, "results", "results");
     char **names = get_labels(name_list);
@@ -251,8 +252,15 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
     fprintf(stderr, "Learning Rate: %g, Momentum: %g, Decay: %g\n", net.learning_rate, net.momentum, net.decay);
     srand(time(0));
 
-    list *plist = get_paths(valid_images);
-    char **paths = (char **)list_to_array(plist);
+    int video = (strlen(vfile) > 0);
+
+    list *plist = NULL;
+    char **paths = NULL;
+
+    if (!video) {
+        plist = get_paths(valid_images);
+        paths = (char **)list_to_array(plist);
+    }
 
     layer l = net.layers[net.n-1];
     int classes = l.classes;
@@ -289,29 +297,49 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
     float **probs = calloc(l.w*l.h*l.n, sizeof(float *));
     for(j = 0; j < l.w*l.h*l.n; ++j) probs[j] = calloc(classes, sizeof(float *));
 
-    int m = plist->size;
+    int m = 0;
     int i=0;
     int t;
 
-    float thresh = .005;
+    float thresh = .2;
     float nms = .45;
 
     int nthreads = 4;
+    if (video)
+        nthreads = 1;
+
     image *val = calloc(nthreads, sizeof(image));
     image *val_resized = calloc(nthreads, sizeof(image));
     image *buf = calloc(nthreads, sizeof(image));
     image *buf_resized = calloc(nthreads, sizeof(image));
     pthread_t *thr = calloc(nthreads, sizeof(pthread_t));
+    double *vpos = calloc(nthreads, sizeof(double));
 
     load_args args = {0};
     args.w = net.w;
     args.h = net.h;
     args.type = IMAGE_DATA;
 
+    if (video) {
+        printf("video file: %s\n", vfile);
+        args.cap = cvCaptureFromFile(vfile);
+        args.type = VIDEO_DATA;
+
+        if(!args.cap)
+            file_error(vfile);
+
+        m = cvGetCaptureProperty(args.cap, CV_CAP_PROP_FRAME_COUNT);
+    } else {
+        m = plist->size;
+    }
+
     for(t = 0; t < nthreads; ++t){
-        args.path = paths[i+t];
         args.im = &buf[t];
         args.resized = &buf_resized[t];
+        if (video)
+            vpos[t] = cvGetCaptureProperty(args.cap, CV_CAP_PROP_POS_FRAMES);
+        else
+            args.path = paths[i+t];
         thr[t] = load_data_in_thread(args);
     }
     time_t start = time(0);
@@ -323,14 +351,26 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
             val_resized[t] = buf_resized[t];
         }
         for(t = 0; t < nthreads && i+t < m; ++t){
-            args.path = paths[i+t];
             args.im = &buf[t];
             args.resized = &buf_resized[t];
+            if (video)
+                vpos[t] = (unsigned long long) cvGetCaptureProperty(args.cap, CV_CAP_PROP_POS_FRAMES);
+            else
+                args.path = paths[i+t];
             thr[t] = load_data_in_thread(args);
         }
         for(t = 0; t < nthreads && i+t-nthreads < m; ++t){
-            char *path = paths[i+t-nthreads];
-            char *id = basecfg(path);
+            char str[64];
+            char *path = NULL;
+            char *id;
+            if (video) {
+                sprintf(str, "%f", vpos[t]);
+                id = str;
+            }
+            else {
+                path = paths[i+t-nthreads];
+                id = basecfg(path);
+            }
             float *X = val_resized[t].data;
             network_predict(net, X);
             int w = val[t].w;
@@ -344,7 +384,8 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
             } else {
                 print_detector_detections(fps, id, boxes, probs, l.w*l.h*l.n, classes, w, h);
             }
-            free(id);
+            if (!video)
+                free(id);
             free_image(val[t]);
             free_image(val_resized[t]);
         }

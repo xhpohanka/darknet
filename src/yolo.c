@@ -29,7 +29,6 @@ void train_yolo(char *cfgfile, char *weightfile)
     int i = *net.seen/imgs;
     data train, buffer;
 
-
     layer l = net.layers[net.n - 1];
 
     int side = l.side;
@@ -124,6 +123,9 @@ void validate_yolo(char *cfgfile, char *weightfile)
     //list *plist = get_paths("data/voc.2012.test");
     char **paths = (char **)list_to_array(plist);
 
+    int video = 1;
+    char *vfile = "/home/windrives/data_old/MotionDetection/AVI/MerzZasedacka_22FPS/video8.mp4";
+
     layer l = net.layers[net.n-1];
     int classes = l.classes;
 
@@ -142,26 +144,41 @@ void validate_yolo(char *cfgfile, char *weightfile)
     int i=0;
     int t;
 
-    float thresh = .001;
+    float thresh = .2;
     int nms = 1;
     float iou_thresh = .5;
 
     int nthreads = 8;
+    if (video)
+        nthreads = 1;
+
     image *val = calloc(nthreads, sizeof(image));
     image *val_resized = calloc(nthreads, sizeof(image));
     image *buf = calloc(nthreads, sizeof(image));
     image *buf_resized = calloc(nthreads, sizeof(image));
     pthread_t *thr = calloc(nthreads, sizeof(pthread_t));
+    double *vpos = calloc(nthreads, sizeof(double));
 
     load_args args = {0};
     args.w = net.w;
     args.h = net.h;
     args.type = IMAGE_DATA;
 
+    if (video) {
+        printf("video file: %s\n", vfile);
+        args.cap = cvCaptureFromFile(vfile);
+        args.type = VIDEO_DATA;
+
+        if(!args.cap) error("Couldn't open video stream.\n");
+
+        m = cvGetCaptureProperty(args.cap, CV_CAP_PROP_FRAME_COUNT);
+    }
+
     for(t = 0; t < nthreads; ++t){
         args.path = paths[i+t];
         args.im = &buf[t];
         args.resized = &buf_resized[t];
+        vpos[t] = cvGetCaptureProperty(args.cap, CV_CAP_PROP_POS_FRAMES);
         thr[t] = load_data_in_thread(args);
     }
     time_t start = time(0);
@@ -176,11 +193,19 @@ void validate_yolo(char *cfgfile, char *weightfile)
             args.path = paths[i+t];
             args.im = &buf[t];
             args.resized = &buf_resized[t];
+            vpos[t] = (unsigned long long) cvGetCaptureProperty(args.cap, CV_CAP_PROP_POS_FRAMES);
             thr[t] = load_data_in_thread(args);
         }
         for(t = 0; t < nthreads && i+t-nthreads < m; ++t){
             char *path = paths[i+t-nthreads];
-            char *id = basecfg(path);
+            char *id;
+            char str[64];
+            if (video) {
+                sprintf(str, "%f", vpos[t]);
+                id = str;
+            }
+            else
+                id = basecfg(path);
             float *X = val_resized[t].data;
             network_predict(net, X);
             int w = val[t].w;
@@ -188,7 +213,8 @@ void validate_yolo(char *cfgfile, char *weightfile)
             get_detection_boxes(l, w, h, thresh, probs, boxes, 0);
             if (nms) do_nms_sort(boxes, probs, l.side*l.side*l.n, classes, iou_thresh);
             print_yolo_detections(fps, id, boxes, probs, l.side*l.side*l.n, classes, w, h);
-            free(id);
+            if (!video)
+                free(id);
             free_image(val[t]);
             free_image(val_resized[t]);
         }

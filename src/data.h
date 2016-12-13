@@ -7,6 +7,12 @@
 #include "image.h"
 #include "tree.h"
 
+#if defined OPENCV && !defined __CUDACC__
+#include <opencv2/core/fast_math.hpp>
+#include <opencv2/videoio/videoio_c.h>
+#endif
+
+
 static inline float distance_from_edge(int x, int max)
 {
     int dx = (max/2) - x;
@@ -28,7 +34,7 @@ typedef struct{
 } data;
 
 typedef enum {
-    CLASSIFICATION_DATA, DETECTION_DATA, CAPTCHA_DATA, REGION_DATA, IMAGE_DATA, COMPARE_DATA, WRITING_DATA, SWAG_DATA, TAG_DATA, OLD_CLASSIFICATION_DATA, STUDY_DATA, DET_DATA, SUPER_DATA
+    CLASSIFICATION_DATA, DETECTION_DATA, CAPTCHA_DATA, REGION_DATA, IMAGE_DATA, COMPARE_DATA, WRITING_DATA, SWAG_DATA, TAG_DATA, OLD_CLASSIFICATION_DATA, STUDY_DATA, DET_DATA, SUPER_DATA, VIDEO_DATA
 } data_type;
 
 typedef struct load_args{
@@ -60,6 +66,15 @@ typedef struct load_args{
     image *resized;
     data_type type;
     tree *hierarchy;
+#if !defined __CUDACC__
+#if defined OPENCV
+    CvCapture *cap;
+#endif
+#else
+#if defined OPENCV
+    void *cap;
+#endif
+#endif
 } load_args;
 
 typedef struct{
