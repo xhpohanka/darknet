@@ -439,6 +439,7 @@ void show_image_cv(image p, const char *name)
     }
     cvShowImage(buff, disp);
     cvReleaseImage(&disp);
+    cvWaitKey(1);
 }
 #endif
 
@@ -449,6 +450,32 @@ void show_image(image p, const char *name)
 #else
     fprintf(stderr, "Not compiled with OpenCV, saving to %s.png instead\n", name);
     save_image(p, name);
+#endif
+}
+
+void save_video(void *vwriter, image p)
+{
+#ifdef OPENCV
+    int x, y, k;
+    image copy = copy_image(p);
+    constrain_image(copy);
+    if(p.c == 3) rgbgr_image(copy);
+
+    IplImage *disp = cvCreateImage(cvSize(p.w,p.h), IPL_DEPTH_8U, p.c);
+    int step = disp->widthStep;
+
+    for(y = 0; y < p.h; ++y) {
+        for(x = 0; x < p.w; ++x) {
+            for(k= 0; k < p.c; ++k) {
+                disp->imageData[y*step + x*p.c + k] = (unsigned char)(get_pixel(copy,x,y,k)*255);
+            }
+        }
+    }
+
+    cvWriteFrame((CvVideoWriter *)vwriter, disp);
+
+    free_image(copy);
+    cvReleaseImage(&disp);
 #endif
 }
 

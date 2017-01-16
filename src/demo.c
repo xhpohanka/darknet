@@ -8,6 +8,7 @@
 #include "image.h"
 #include "demo.h"
 #include <sys/time.h>
+#include <signal.h>
 
 #define FRAMES 3
 
@@ -29,6 +30,7 @@ static image det  ;
 static image det_s;
 static image disp = {0};
 static CvCapture * cap;
+static CvVideoWriter * vwriter;
 static float fps = 0;
 static float demo_thresh = 0;
 static float demo_hier_thresh = .5;
@@ -44,7 +46,9 @@ void *fetch_in_thread(void *ptr)
     if(!in.data){
         error("Stream closed.");
     }
+
     in_s = resize_image(in, net.w, net.h);
+
     return 0;
 }
 
@@ -92,11 +96,28 @@ double get_wall_time()
     return (double)time.tv_sec + (double)time.tv_usec * .000001;
 }
 
+void sig_handler(int sig) {
+    switch (sig) {
+    case SIGINT:
+    case SIGTERM:
+        if (vwriter)
+            cvReleaseVideoWriter(&vwriter);
+        exit(0);
+        break;
+
+    default:
+        fprintf(stderr, "Unhandled signal!\n");
+        abort();
+    }
+}
+
 void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int frame_skip, char *prefix, float hier_thresh)
 {
     //skip = frame_skip;
     image **alphabet = load_alphabet();
     int delay = frame_skip;
+    char *oname = "output.mp4";
+
     demo_names = names;
     demo_alphabet = alphabet;
     demo_classes = classes;
@@ -138,6 +159,19 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     det = in;
     det_s = in_s;
 
+    if (oname) {
+        //        int codec = CV_FOURCC('M', 'J', 'P', 'G');
+        int codec = CV_FOURCC('X', '2', '6', '4');
+        vwriter = cvCreateVideoWriter(oname, codec, 25.0,
+                cvSize(det.w, det.h), 1);
+
+        if (vwriter == NULL)
+            error("Cannot create videoWriter\n");
+
+        signal(SIGINT, sig_handler);
+        signal(SIGTERM, sig_handler);
+    }
+
     fetch_in_thread(0);
     detect_in_thread(0);
     disp = det;
@@ -169,6 +203,8 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
 
             if(!prefix){
                 show_image(disp, "Demo");
+                if (vwriter)
+                    save_video(vwriter, disp);
                 int c = cvWaitKey(1);
                 if (c == 10){
                     if(frame_skip == 0) frame_skip = 60;
@@ -213,6 +249,9 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
             before = after;
         }
     }
+
+    if (vwriter)
+        cvReleaseVideoWriter(&vwriter);
 }
 #else
 void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int frame_skip, char *prefix, float hier_thresh)
