@@ -15,8 +15,10 @@ convnet/
 decaf/
 submission/
 cfg/
+results/
 darknet
 .fuse*
+*.weights
 
 # OS Generated #
 .DS_Store*
