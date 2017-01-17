@@ -527,13 +527,30 @@ image load_image_cv(char *filename, int channels)
     return out;
 }
 
-image get_image_from_stream(CvCapture *cap)
+static image get_image_from_stream2(CvCapture *cap, int togray)
 {
     IplImage* src = cvQueryFrame(cap);
     if (!src) return make_empty_image(0,0,0);
+    if (togray) {
+        IplImage* gray;
+        gray = cvCreateImage(cvSize(src->width, src->height), 8, 1);
+        cvCvtColor(src, gray, CV_BGR2GRAY);
+        cvMerge(gray, gray, gray, NULL, src);
+        cvReleaseImage(&gray);
+    }
     image im = ipl_to_image(src);
     rgbgr_image(im);
     return im;
+}
+
+image get_image_from_stream(CvCapture *cap)
+{
+    return get_image_from_stream2(cap, 0);
+}
+
+image get_gray_image_from_stream(CvCapture *cap)
+{
+    return get_image_from_stream2(cap, 1);
 }
 
 void save_image_jpg(image p, const char *name)

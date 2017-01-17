@@ -16,6 +16,7 @@
 #include "opencv2/highgui/highgui_c.h"
 #include "opencv2/imgproc/imgproc_c.h"
 image get_image_from_stream(CvCapture *cap);
+image get_gray_image_from_stream(CvCapture *cap);
 
 static char **demo_names;
 static image **demo_alphabet;
@@ -39,10 +40,15 @@ static float *predictions[FRAMES];
 static int demo_index = 0;
 static image images[FRAMES];
 static float *avg;
+#define GRAYSCALE
 
 void *fetch_in_thread(void *ptr)
 {
+#ifdef GRAYSCALE
+    in = get_gray_image_from_stream(cap);
+#else
     in = get_image_from_stream(cap);
+#endif
     if(!in.data){
         error("Stream closed.");
     }
