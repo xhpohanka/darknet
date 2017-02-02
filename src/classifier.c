@@ -72,6 +72,7 @@ void train_classifier(char *datacfg, char *cfgfile, char *weightfile, int *gpus,
     load_args args = {0};
     args.w = net.w;
     args.h = net.h;
+    args.c = net.c;
     args.threads = 32;
     args.hierarchy = net.hierarchy;
 
@@ -495,7 +496,7 @@ void validate_classifier_single(char *datacfg, char *filename, char *weightfile)
                 break;
             }
         }
-        image im = load_image_color(paths[i], 0, 0);
+        image im = load_image(paths[i], 0, 0, net.c);
         image resized = resize_min(im, net.w);
         image crop = crop_image(resized, (resized.w - net.w)/2, (resized.h - net.h)/2, net.w, net.h);
         //show_image(im, "orig");
