@@ -40,15 +40,15 @@ static float *predictions[FRAMES];
 static int demo_index = 0;
 static image images[FRAMES];
 static float *avg;
-#define GRAYSCALE
+static int gray = 0;
 
 void *fetch_in_thread(void *ptr)
 {
-#ifdef GRAYSCALE
-    in = get_gray_image_from_stream(cap);
-#else
-    in = get_image_from_stream(cap);
-#endif
+    if (gray)
+        in = get_gray_image_from_stream(cap);
+    else
+        in = get_image_from_stream(cap);
+
     if(!in.data){
         error("Stream closed.");
     }
@@ -135,6 +135,9 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
         load_weights(&net, weightfile);
     }
     set_batch_network(&net, 1);
+
+    if (net.c == 1)
+        gray = 1;
 
     srand(2222222);
 
