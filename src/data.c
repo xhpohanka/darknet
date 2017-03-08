@@ -12,6 +12,7 @@
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 image get_image_from_stream(CvCapture *cap);
+image get_gray_image_from_stream(CvCapture *cap);
 
 list *get_paths(char *filename)
 {
@@ -727,7 +728,6 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
 
 void *load_thread(void *ptr)
 {
-    //printf("Loading data: %d\n", rand());
     load_args a = *(struct load_args*)ptr;
     if(a.exposure == 0) a.exposure = 1;
     if(a.saturation == 0) a.saturation = 1;
@@ -753,7 +753,10 @@ void *load_thread(void *ptr)
         *(a.im) = load_image_color(a.path, 0, 0);
         *(a.resized) = resize_image(*(a.im), a.w, a.h);
     } else if (a.type == VIDEO_DATA){
-        *(a.im) = get_image_from_stream(a.cap);
+        if (a.c == 1)
+            *(a.im) = get_gray_image_from_stream(a.cap);
+        else
+            *(a.im) = get_image_from_stream(a.cap);
         *(a.resized) = resize_image(*(a.im), a.w, a.h);
     } else if (a.type == TAG_DATA){
         *a.d = load_data_tag(a.paths, a.c, a.n, a.m, a.classes, a.min, a.max, a.size, a.angle, a.aspect, a.hue, a.saturation, a.exposure);

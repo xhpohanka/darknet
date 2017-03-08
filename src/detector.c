@@ -319,6 +319,7 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
     load_args args = {0};
     args.w = net.w;
     args.h = net.h;
+    args.c = net.c;
     args.type = IMAGE_DATA;
 
     if (video) {
