@@ -50,7 +50,8 @@ void *fetch_in_thread(void *ptr)
         in = get_image_from_stream(cap);
 
     if(!in.data){
-        error("Stream closed.");
+        printf("Stream closed.\n");
+        return 0;
     }
 
     in_s = resize_image(in, net.w, net.h);
@@ -124,6 +125,8 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     int delay = frame_skip;
     char *oname = "output.mp4";
 
+    char *display = getenv("DISPLAY");
+
     demo_names = names;
     demo_alphabet = alphabet;
     demo_classes = classes;
@@ -196,7 +199,7 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     }
 
     int count = 0;
-    if(!prefix){
+    if(!prefix && display != NULL){
         cvNamedWindow("Demo", CV_WINDOW_NORMAL); 
         cvMoveWindow("Demo", 0, 0);
         cvResizeWindow("Demo", 1352, 1013);
@@ -210,16 +213,19 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
             if(pthread_create(&fetch_thread, 0, fetch_in_thread, 0)) error("Thread creation failed");
             if(pthread_create(&detect_thread, 0, detect_in_thread, 0)) error("Thread creation failed");
 
+            if (vwriter)
+                save_video(vwriter, disp);
+
             if(!prefix){
-                show_image(disp, "Demo");
-                if (vwriter)
-                    save_video(vwriter, disp);
-                int c = cvWaitKey(1);
-                if (c == 10){
-                    if(frame_skip == 0) frame_skip = 60;
-                    else if(frame_skip == 4) frame_skip = 0;
-                    else if(frame_skip == 60) frame_skip = 4;   
-                    else frame_skip = 0;
+                if (display != NULL) {
+                    show_image(disp, "Demo");
+                    int c = cvWaitKey(1);
+                    if (c == 10){
+                        if(frame_skip == 0) frame_skip = 60;
+                        else if(frame_skip == 4) frame_skip = 0;
+                        else if(frame_skip == 60) frame_skip = 4;
+                        else frame_skip = 0;
+                    }
                 }
             }else{
                 char buff[256];
@@ -228,6 +234,8 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
             }
 
             pthread_join(fetch_thread, 0);
+            if (!in.data)
+                break;
             pthread_join(detect_thread, 0);
 
             if(delay == 0){
