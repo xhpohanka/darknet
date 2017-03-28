@@ -9,7 +9,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-layer make_region_layer(int batch, int w, int h, int n, int classes, int coords)
+layer make_region_layer(int batch, int w, int h, int n, int classes, int coords, int binary)
 {
     layer l = {0};
     l.type = REGION;
@@ -20,6 +20,7 @@ layer make_region_layer(int batch, int w, int h, int n, int classes, int coords)
     l.w = w;
     l.classes = classes;
     l.coords = coords;
+    l.bin_class = binary;
     l.cost = calloc(1, sizeof(float));
     l.biases = calloc(n*2, sizeof(float));
     l.bias_updates = calloc(n*2, sizeof(float));
@@ -139,6 +140,8 @@ void forward_region_layer(const layer l, network_state state)
 #ifndef GPU
     flatten(l.output, l.w*l.h, size*l.n, l.batch, 1);
 #endif
+
+    // sigmoid na objectness
     for (b = 0; b < l.batch; ++b){
         for(i = 0; i < l.h*l.w*l.n; ++i){
             int index = size*i + b*l.outputs;
@@ -205,26 +208,31 @@ void forward_region_layer(const layer l, network_state state)
             }
             if(onlyclass) continue;
         }
+        // tahle smycka nastavuje delty pro boxiky BEZ objektu (k cemu je noobject_scale? Ze by vaha negativu?) -> noobjectness?
+        // pro nizky iterace nastavuje pro tyhle boxiky i delty pozice, pozdeji zustavaj nulovy
         for (j = 0; j < l.h; ++j) {
             for (i = 0; i < l.w; ++i) {
                 for (n = 0; n < l.n; ++n) {
                     int index = size*(j*l.w*l.n + i*l.n + n) + b*l.outputs;
-                    box pred = get_region_box(l.output, l.biases, n, index, i, j, l.w, l.h);
+                    box pred = get_region_box(l.output, l.biases, n, index, i, j, l.w, l.h); // vystup site -> odhad pozice
                     float best_iou = 0;
                     for(t = 0; t < 30; ++t){
-                        box truth = float_to_box(state.truth + t*5 + b*l.truths);
-                        if(!truth.x) break;
+                        box truth = float_to_box(state.truth + t*5 + b*l.truths); // ground truth
+                        if(!truth.x) break; // kdyz nemam priklady, koncim
                         float iou = box_iou(pred, truth);
                         if (iou > best_iou) {
-                            best_iou = iou;
+                            best_iou = iou; // hledam priklad s nejvetsim prekryvem k aktualni detekci
                         }
                     }
                     avg_anyobj += l.output[index + 4];
-                    l.delta[index + 4] = l.noobject_scale * ((0 - l.output[index + 4]) * logistic_gradient(l.output[index + 4]));
+                    l.delta[index + 4] = l.noobject_scale *
+                            ((0 - l.output[index + 4]) * logistic_gradient(l.output[index + 4])); // u kazdyho detektoru nastavim deltu pro NOOBJECT, smer k 0
                     if (best_iou > l.thresh) {
-                        l.delta[index + 4] = 0;
+                        l.delta[index + 4] = 0; // pokud se nahodou dektor trefil delta objectness budiz 0
+                                                // muze jich bejt samozrejme vic, nenul. deltu ale nakonce dostane jen ten, co je nejbliz stredu
                     }
 
+                    // pro nizsi iterace budu posilat detektory pozice smerem k anchor boxu bez ohledu na objectness
                     if(*(state.net.seen) < 12800){
                         box truth = {0};
                         truth.x = (i + .5)/l.w;
@@ -236,21 +244,26 @@ void forward_region_layer(const layer l, network_state state)
                 }
             }
         }
+        // tahle smycka nastavuje delty pro detektory dobre pasujici na ground truth
         for(t = 0; t < 30; ++t){
             box truth = float_to_box(state.truth + t*5 + b*l.truths);
 
-            if(!truth.x) break;
+            if(!truth.x)
+                break;
+
+            // nastavuju jen pro JEDEN detektor, ktery nejlepe odpovida stredem a velikosti
+
             float best_iou = 0;
             int best_index = 0;
             int best_n = 0;
-            i = (truth.x * l.w);
+            i = (truth.x * l.w); // pozice detektoru bude odpovidat stredu objektu
             j = (truth.y * l.h);
             //printf("%d %f %d %f\n", i, truth.x*l.w, j, truth.y*l.h);
             box truth_shift = truth;
             truth_shift.x = 0;
             truth_shift.y = 0;
             //printf("index %d %d\n",i, j);
-            for(n = 0; n < l.n; ++n){
+            for(n = 0; n < l.n; ++n) { // pro kazdej priklad najdu nejlip odpovidajici (iou) velikost detektoru
                 int index = size*(j*l.w*l.n + i*l.n + n) + b*l.outputs;
                 box pred = get_region_box(l.output, l.biases, n, index, i, j, l.w, l.h);
                 if(l.bias_match){
@@ -282,7 +295,14 @@ void forward_region_layer(const layer l, network_state state)
 
 
             int class = state.truth[t*5 + b*l.truths + 4];
-            if (l.map) class = l.map[class];
+            if (l.bin_class) {
+                if (class == l.bin_class)
+                    class = 1;
+                else
+                    class = 0;
+            }
+            if (l.map)
+                class = l.map[class];
             delta_region_class(l.output, l.delta, best_index + 5, class, l.classes, l.softmax_tree, l.class_scale, &avg_cat);
             ++count;
             ++class_count;
@@ -292,7 +312,7 @@ void forward_region_layer(const layer l, network_state state)
 #ifndef GPU
     flatten(l.delta, l.w*l.h, size*l.n, l.batch, 0);
 #endif
-    *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);
+    *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2); // proc tu je to umocneni kdyz je ve vnitrni funkci sqrt? Aby vysly derivace...
     printf("Region Avg IOU: %f, Class: %f, Obj: %f, No Obj: %f, Avg Recall: %f,  count: %d\n", avg_iou/count, avg_cat/class_count, avg_obj/count, avg_anyobj/(l.w*l.h*l.n*l.batch), recall/count, count);
 }
 
@@ -336,7 +356,10 @@ void get_region_boxes(layer l, int w, int h, float thresh, float **probs, box *b
             } else {
                 for(j = 0; j < l.classes; ++j){
                     float prob = scale*predictions[class_index+j];
-                    probs[index][j] = (prob > thresh) ? prob : 0;
+                    if (prob > thresh)
+                        probs[index][j] = prob;
+                    else
+                        probs[index][j] = 0;
                 }
             }
             if(only_objectness){

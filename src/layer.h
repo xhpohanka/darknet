@@ -86,6 +86,7 @@ struct layer{
     int softmax;
     int classes;
     int coords;
+    int bin_class;
     int background;
     int rescore;
     int objectness;
