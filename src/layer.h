@@ -79,6 +79,7 @@ struct layer{
     float dot;
     float angle;
     float jitter;
+    float jitter_shift;
     float saturation;
     float exposure;
     float shift;

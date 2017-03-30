@@ -673,7 +673,7 @@ data load_data_swag(char **paths, int n, int classes, float jitter)
     return d;
 }
 
-data load_data_detection(int n, char **paths, int m, int w, int h, int c, int boxes, int classes, float jitter, float hue, float saturation, float exposure)
+data load_data_detection(int n, char **paths, int m, int w, int h, int c, int boxes, int classes, float jitter, float jitter_shift, float hue, float saturation, float exposure)
 {
     char **random_paths = get_random_paths(paths, n, m);
     int i;
@@ -694,10 +694,13 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
         int dw = (ow*jitter);
         int dh = (oh*jitter);
 
-        int pleft  = rand_uniform(-dw, dw);
-        int pright = rand_uniform(-dw, dw);
-        int ptop   = rand_uniform(-dh, dh);
-        int pbot   = rand_uniform(-dh, dh);
+        int dsw = (ow*jitter_shift);
+        int dsh = (oh*jitter_shift);
+
+        int pleft  = rand_uniform(-dw + dsw, dw + dsw);
+        int pright = rand_uniform(-dw + dsw, dw + dsw);
+        int ptop   = rand_uniform(-dh + dsh, dh + dsh);
+        int pbot   = rand_uniform(-dh + dsh, dh + dsh);
 
         int swidth =  ow - pleft - pright;
         int sheight = oh - ptop - pbot;
@@ -744,7 +747,7 @@ void *load_thread(void *ptr)
     } else if (a.type == REGION_DATA){
         *a.d = load_data_region(a.n, a.paths, a.m, a.w, a.h, a.num_boxes, a.classes, a.jitter, a.hue, a.saturation, a.exposure);
     } else if (a.type == DETECTION_DATA){
-        *a.d = load_data_detection(a.n, a.paths, a.m, a.w, a.h, a.c, a.num_boxes, a.classes, a.jitter, a.hue, a.saturation, a.exposure);
+        *a.d = load_data_detection(a.n, a.paths, a.m, a.w, a.h, a.c, a.num_boxes, a.classes, a.jitter, a.jitter_shift, a.hue, a.saturation, a.exposure);
     } else if (a.type == SWAG_DATA){
         *a.d = load_data_swag(a.paths, a.n, a.classes, a.jitter);
     } else if (a.type == COMPARE_DATA){

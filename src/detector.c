@@ -50,6 +50,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
 
     int classes = l.classes;
     float jitter = l.jitter;
+    float jitter_shift = l.jitter_shift;
 
     list *plist = get_paths(train_images);
     //int N = plist->size;
@@ -64,6 +65,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     args.m = plist->size;
     args.classes = classes;
     args.jitter = jitter;
+    args.jitter_shift = jitter_shift;
     args.num_boxes = l.max_boxes;
     args.d = &buffer;
     args.type = DETECTION_DATA;

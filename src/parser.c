@@ -248,6 +248,7 @@ layer parse_region(list *options, size_params params)
     l.softmax = option_find_int(options, "softmax", 0);
     l.max_boxes = option_find_int_quiet(options, "max",30);
     l.jitter = option_find_float(options, "jitter", .2);
+    l.jitter_shift = option_find_float(options, "jitter_shift", 0);
     l.rescore = option_find_int_quiet(options, "rescore",0);
 
     l.thresh = option_find_float(options, "thresh", .5);

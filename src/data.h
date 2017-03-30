@@ -57,6 +57,7 @@ typedef struct load_args{
     int background;
     int scale;
     float jitter;
+    float jitter_shift;
     float angle;
     float aspect;
     float saturation;
@@ -94,7 +95,7 @@ void print_letters(float *pred, int n);
 data load_data_captcha(char **paths, int n, int m, int k, int w, int h);
 data load_data_captcha_encode(char **paths, int n, int m, int w, int h);
 data load_data_old(char **paths, int n, int m, char **labels, int k, int w, int h);
-data load_data_detection(int n, char **paths, int m, int w, int h, int c, int boxes, int classes, float jitter, float hue, float saturation, float exposure);
+data load_data_detection(int n, char **paths, int m, int w, int h, int c, int boxes, int classes, float jitter, float jitter_shift, float hue, float saturation, float exposure);
 data load_data_tag(char **paths, int c, int n, int m, int k, int min, int max, int size, float angle, float aspect, float hue, float saturation, float exposure);
 matrix load_image_augment_paths(char **paths, int c, int n, int min, int max, int size, float angle, float aspect, float hue, float saturation, float exposure);
 data load_data_super(char **paths, int n, int m, int w, int h, int scale);
