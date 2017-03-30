@@ -265,6 +265,8 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
 
     layer l = net.layers[net.n-1];
     int classes = l.classes;
+    if (l.bin_class > 0)
+        classes = 2;
 
     char buff[1024];
     char *type = option_find_str(options, "eval", "voc");

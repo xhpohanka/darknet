@@ -154,6 +154,10 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     if(!cap) error("Couldn't connect to webcam.\n");
 
     layer l = net.layers[net.n-1];
+    if (l.bin_class > 0) {
+        classes = 2;
+        demo_classes = classes;
+    }
     int j;
 
     avg = (float *) calloc(l.outputs, sizeof(float));
