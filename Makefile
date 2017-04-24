@@ -1,7 +1,7 @@
-GPU=1
-CUDNN=1
-OPENCV=1
-DEBUG=0
+GPU ?= 0
+CUDNN ?= 0
+OPENCV ?= 1
+DEBUG ?= 0
 
 ARCH= -gencode arch=compute_50,code=[sm_50,compute_50]
 
@@ -28,8 +28,8 @@ CFLAGS+=$(OPTS)
 ifeq ($(OPENCV), 1) 
 COMMON+= -DOPENCV
 CFLAGS+= -DOPENCV
-LDFLAGS+= `pkg-config --libs opencv` 
-COMMON+= `pkg-config --cflags opencv` 
+LDFLAGS+= -lopencv_highgui -lopencv_videoio -lopencv_imgcodecs -lopencv_photo -lopencv_imgproc -lopencv_core
+COMMON+= `pkg-config --cflags opencv`
 endif
 
 ifeq ($(GPU), 1) 
