@@ -180,12 +180,15 @@ image **load_alphabet()
     return alphabets;
 }
 
-void draw_detections(image im, int num, float thresh, box *boxes, float **probs, char **names, image **alphabet, int classes)
+void draw_detections(image im, int num, float thresh, box *boxes, float **probs, char **names, image **alphabet, int classes, int sc)
 {
     int i;
 
     for(i = 0; i < num; ++i){
         int class = max_index(probs[i], classes);
+        if (sc > 0 && class != sc)
+            continue;
+
         float prob = probs[i][class];
         if(prob > thresh){
 
@@ -530,16 +533,20 @@ image load_image_cv(char *filename, int channels)
     return out;
 }
 
-static image get_image_from_stream2(CvCapture *cap, int togray)
+static image get_image_from_stream2(CvCapture *cap, int togray, int channels)
 {
     IplImage* src = cvQueryFrame(cap);
     if (!src) return make_empty_image(0,0,0);
     if (togray) {
-        IplImage* gray;
-        gray = cvCreateImage(cvSize(src->width, src->height), 8, 1);
-        cvCvtColor(src, gray, CV_BGR2GRAY);
-        cvMerge(gray, gray, gray, NULL, src);
-        cvReleaseImage(&gray);
+        if (channels == 3) {
+            IplImage* gray;
+            gray = cvCreateImage(cvSize(src->width, src->height), 8, 1);
+            cvCvtColor(src, gray, CV_BGR2GRAY);
+            cvMerge(gray, gray, gray, NULL, src);
+            cvReleaseImage(&gray);
+        } else {
+            cvCvtColor(src, src, CV_BGR2GRAY);
+        }
     }
     image im = ipl_to_image(src);
     rgbgr_image(im);
@@ -548,12 +555,17 @@ static image get_image_from_stream2(CvCapture *cap, int togray)
 
 image get_image_from_stream(CvCapture *cap)
 {
-    return get_image_from_stream2(cap, 0);
+    return get_image_from_stream2(cap, 0, 0);
 }
 
 image get_gray_image_from_stream(CvCapture *cap)
 {
-    return get_image_from_stream2(cap, 1);
+    return get_image_from_stream2(cap, 1, 0);
+}
+
+image get_gray_image_from_stream_3c(CvCapture *cap)
+{
+    return get_image_from_stream2(cap, 1, 3);
 }
 
 void save_image_jpg(image p, const char *name)

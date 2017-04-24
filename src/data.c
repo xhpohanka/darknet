@@ -13,6 +13,7 @@
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 image get_image_from_stream(CvCapture *cap);
 image get_gray_image_from_stream(CvCapture *cap);
+image get_gray_image_from_stream_3c(CvCapture *cap);
 
 list *get_paths(char *filename)
 {
@@ -760,6 +761,9 @@ void *load_thread(void *ptr)
             *(a.im) = get_gray_image_from_stream(a.cap);
         else
             *(a.im) = get_image_from_stream(a.cap);
+        *(a.resized) = resize_image(*(a.im), a.w, a.h);
+    } else if (a.type == GRAYED_VIDEO_DATA){
+        *(a.im) = get_gray_image_from_stream_3c(a.cap);
         *(a.resized) = resize_image(*(a.im), a.w, a.h);
     } else if (a.type == TAG_DATA){
         *a.d = load_data_tag(a.paths, a.c, a.n, a.m, a.classes, a.min, a.max, a.size, a.angle, a.aspect, a.hue, a.saturation, a.exposure);
