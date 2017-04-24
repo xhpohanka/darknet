@@ -177,6 +177,12 @@ void forward_region_layer(const layer l, network_state state)
     int count = 0;
     int class_count = 0;
     *(l.cost) = 0;
+
+    float sum_scale = 0;
+    float sum_pos = 0;
+    float sum_size = 0;
+    float sum_conf = 0;
+
     for (b = 0; b < l.batch; ++b) {
         if(l.softmax_tree){
             int onlyclass = 0;
@@ -232,6 +238,8 @@ void forward_region_layer(const layer l, network_state state)
                                                 // muze jich bejt samozrejme vic, nenul. deltu ale nakonce dostane jen ten, co je nejbliz stredu
                     }
 
+                    sum_scale += l.delta[index + 4]*l.delta[index + 4];
+
                     // pro nizsi iterace budu posilat detektory pozice smerem k anchor boxu bez ohledu na objectness
                     if(*(state.net.seen) < 12800){
                         box truth = {0};
@@ -240,10 +248,15 @@ void forward_region_layer(const layer l, network_state state)
                         truth.w = l.biases[2*n]/l.w;
                         truth.h = l.biases[2*n+1]/l.h;
                         delta_region_box(truth, l.output, l.biases, n, index, i, j, l.w, l.h, l.delta, .01);
+                        sum_pos += l.delta[index + 0]*l.delta[index + 0];
+                        sum_pos += l.delta[index + 1]*l.delta[index + 1];
+                        sum_size += l.delta[index + 2]*l.delta[index + 2];
+                        sum_size += l.delta[index + 3]*l.delta[index + 3];
                     }
                 }
             }
         }
+
         // tahle smycka nastavuje delty pro detektory dobre pasujici na ground truth
         for(t = 0; t < 30; ++t){
             box truth = float_to_box(state.truth + t*5 + b*l.truths);
@@ -283,6 +296,11 @@ void forward_region_layer(const layer l, network_state state)
             //printf("%d %f (%f, %f) %f x %f\n", best_n, best_iou, truth.x, truth.y, truth.w, truth.h);
 
             float iou = delta_region_box(truth, l.output, l.biases, best_n, best_index, i, j, l.w, l.h, l.delta, l.coord_scale);
+            sum_pos +=  l.delta[best_index + 0]*l.delta[best_index + 0];
+            sum_pos +=  l.delta[best_index + 1]*l.delta[best_index + 1];
+            sum_size += l.delta[best_index + 2]*l.delta[best_index + 2];
+            sum_size += l.delta[best_index + 3]*l.delta[best_index + 3];
+
             if(iou > .5) recall += 1;
             avg_iou += iou;
 
@@ -292,6 +310,7 @@ void forward_region_layer(const layer l, network_state state)
             if (l.rescore) {
                 l.delta[best_index + 4] = l.object_scale * (iou - l.output[best_index + 4]) * logistic_gradient(l.output[best_index + 4]);
             }
+            sum_scale += l.delta[best_index + 4]*l.delta[best_index + 4];
 
 
             int class = state.truth[t*5 + b*l.truths + 4];
@@ -304,10 +323,16 @@ void forward_region_layer(const layer l, network_state state)
             if (l.map)
                 class = l.map[class];
             delta_region_class(l.output, l.delta, best_index + 5, class, l.classes, l.softmax_tree, l.class_scale, &avg_cat);
+            for (n = 0; n < l.classes; n++) {
+                sum_conf += l.delta[best_index + 5 + n] * l.delta[best_index + 5 + n];
+            }
             ++count;
             ++class_count;
         }
     }
+
+    printf("%f, %f, %f, %f\n", sum_pos, sum_size, sum_scale, sum_conf);
+
     //printf("\n");
 #ifndef GPU
     flatten(l.delta, l.w*l.h, size*l.n, l.batch, 0);
