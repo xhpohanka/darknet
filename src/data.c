@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include "data.h"
 #include "utils.h"
 #include "image.h"
@@ -689,11 +691,20 @@ data load_data_detection(int n, char **paths, int m, int w, int h, int c, int bo
     for(i = 0; i < n; ++i){
         image orig = load_image(random_paths[i], 0, 0, c);
 
+        int hpd = 0;
+        hpd |= (strcasestr(random_paths[i], "frankfurt") != NULL);
+        hpd |= (strcasestr(random_paths[i], "merz") != NULL);
+        hpd |= (strcasestr(random_paths[i], "steinel") != NULL);
+        hpd |= (strcasestr(random_paths[i], "haag") != NULL);
+
         int oh = orig.h;
         int ow = orig.w;
 
         int dw = (ow*jitter);
         int dh = (oh*jitter);
+
+        if (hpd)
+            dh = (oh*jitter/20);
 
         int dsw = (ow*jitter_shift);
         int dsh = (oh*jitter_shift);
