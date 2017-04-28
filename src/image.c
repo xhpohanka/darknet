@@ -1018,6 +1018,64 @@ void scale_image_channel(image im, int c, float v)
     }
 }
 
+void scale_image_channel_sym(image im, int c, float v)
+{
+    int x1, y1, x2, y2, grad;
+    x1 = rand_int(10, im.w - 10);
+    y1 = rand_int(10, im.h - 10);
+    x2 = rand_int(10, im.w - 10);
+    y2 = rand_int(10, im.h - 10);
+    grad = rand_int(0, 15);
+
+    float a = (float)(y2 - y1)/(x2 - x1);
+    float b = y1 - a*x1;
+
+    int i, j;
+    for(j = 0; j < im.h; ++j){
+        for(i = 0; i < im.w; ++i){
+            float pix = get_pixel(im, i, j, c);
+            float dist = (a*i - j + b) / sqrt(a*a + 1);
+
+            float vt = v;
+            if (dist > 0) {
+                if (dist < grad)
+                    vt = v - (float) dist/grad * (v - 1.0);
+                else
+                    vt = 1.0;
+            }
+
+            pix = (pix - 0.5)*vt + 0.5;
+
+            set_pixel(im, i, j, c, pix);
+        }
+    }
+}
+
+float gaussian(float in, float mu, float sigma)
+{
+    return exp(-0.5 * pow(((in - mu)/sigma), 2));
+}
+
+void image_channel_point_light(image im, int c, float v, int x, int y, int size)
+{
+    int i, j;
+    size = rand_int(0, size);
+    v = rand_uniform(0, v);
+
+    for(j = 0; j < im.h; ++j){
+        for(i = 0; i < im.w; ++i){
+            float pix = get_pixel(im, i, j, c);
+
+            float vt = 0;
+            float dist = sqrt((i-x)*(i-x) + (j-y)*(j-y));
+            vt = v * gaussian(dist, 0, size);
+
+            pix = pix + vt;
+            set_pixel(im, i, j, c, pix);
+        }
+    }
+}
+
 void translate_image_channel(image im, int c, float v)
 {
     int i, j;
@@ -1075,7 +1133,8 @@ void distort_image(image im, float hue, float sat, float val)
     if (im.c == 3) {
         rgb_to_hsv(im);
         scale_image_channel(im, 1, sat);
-        scale_image_channel(im, 2, val);
+        scale_image_channel_sym(im, 2, val);
+        image_channel_point_light(im, 2, val, rand_int(0, im.w), rand_int(0, im.h), im.h/4);
     }
 
     int i;
