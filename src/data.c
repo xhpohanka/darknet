@@ -145,8 +145,14 @@ box_label *read_boxes(char *filename, int *n)
     if(!file) file_error(filename);
     float x, y, h, w;
     int id;
+    int flag = 0;
     int count = 0;
-    while(fscanf(file, "%d %f %f %f %f", &id, &x, &y, &w, &h) == 5){
+    char line[128];
+    while(fgets(line, 128, file) != NULL){
+        int c = sscanf(line, "%d %f %f %f %f %d", &id, &x, &y, &w, &h, &flag);
+        if (c < 5)
+            break;
+
         boxes = realloc(boxes, (count+1)*sizeof(box_label));
         boxes[count].id = id;
         boxes[count].x = x;
@@ -157,6 +163,7 @@ box_label *read_boxes(char *filename, int *n)
         boxes[count].right  = x + w/2;
         boxes[count].top    = y - h/2;
         boxes[count].bottom = y + h/2;
+        boxes[count].flag = flag;
         ++count;
     }
     fclose(file);
