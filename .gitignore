@@ -19,6 +19,11 @@ results/
 darknet
 .fuse*
 *.weights
+*.conv.*
+bad.list
+*.7z
+backup*/
+results*/
 
 # OS Generated #
 .DS_Store*
