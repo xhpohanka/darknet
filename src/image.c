@@ -1045,6 +1045,8 @@ void scale_image_channel_sym(image im, int c, float v)
             }
 
             pix = (pix - 0.5)*vt + 0.5;
+            if (pix > 1) pix = 1.0f;
+            if (pix < 0) pix = 0.0f;
 
             set_pixel(im, i, j, c, pix);
         }
@@ -1071,6 +1073,8 @@ void image_channel_point_light(image im, int c, float v, int x, int y, int size)
             vt = v * gaussian(dist, 0, size);
 
             pix = pix + vt;
+            if (pix > 1) pix = 1.0f;
+            if (pix < 0) pix = 0.0f;
             set_pixel(im, i, j, c, pix);
         }
     }
@@ -1128,13 +1132,18 @@ void exposure_image(image im, float sat)
     constrain_image(im);
 }
 
+#define BETTER_AUGMENT
 void distort_image(image im, float hue, float sat, float val)
 {
     if (im.c == 3) {
         rgb_to_hsv(im);
         scale_image_channel(im, 1, sat);
+#if defined BETTER_AUGMENT
         scale_image_channel_sym(im, 2, val);
         image_channel_point_light(im, 2, val, rand_int(0, im.w), rand_int(0, im.h), im.h/4);
+#else
+        scale_image_channel(im, 1, val);
+#endif
     }
 
     int i;
