@@ -12,14 +12,17 @@ VPATH=./src/
 EXEC=darknet
 OBJDIR=./obj/
 
-CC=gcc-5
+CXX=g++
+CC=gcc
 NVCC=nvcc
 OPTS=-Ofast
 LDFLAGS= -lm -pthread 
 COMMON= 
 CFLAGS=-Wall -Wfatal-errors 
 
-ifeq ($(DEBUG), 1) 
+EXTRA_NVCCFLAGS=-Xcompiler -D__CORRECT_ISO_CPP11_MATH_H_PROTO
+
+ifeq ($(DEBUG), 1)
 OPTS=-O0 -g
 endif
 
@@ -28,7 +31,7 @@ CFLAGS+=$(OPTS)
 ifeq ($(OPENCV), 1) 
 COMMON+= -DOPENCV
 CFLAGS+= -DOPENCV
-LDFLAGS+= -lopencv_highgui -lopencv_videoio -lopencv_imgcodecs -lopencv_photo -lopencv_imgproc -lopencv_core
+LDFLAGS+= $(filter-out -lopencv_ts -lopencv_xobjdetect -lopencv_objdetect, $(shell pkg-config --libs opencv))
 COMMON+= `pkg-config --cflags opencv`
 endif
 
