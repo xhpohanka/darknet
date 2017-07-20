@@ -310,7 +310,8 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
     l.workspace_size = get_workspace_size(l);
     l.activation = activation;
 
-    fprintf(stderr, "conv  %5d %2d x%2d /%2d  %4d x%4d x%4d   ->  %4d x%4d x%4d\n", n, size, size, stride, w, h, c, l.out_w, l.out_h, l.out_c);
+    fprintf(stderr, "conv  %5d %2d x%2d /%2d  %4d x%4d x%4d   ->  %4d x%4d x%4d -> %4llu\n", n, size, size, stride,
+            w, h, c, l.out_w, l.out_h, l.out_c, (unsigned long long)size*size * w*h*c*n/stride/stride);
 
     return l;
 }

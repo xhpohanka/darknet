@@ -8,6 +8,7 @@
 #include "image.h"
 #include "demo.h"
 #include <sys/time.h>
+#include <signal.h>
 
 #define DEMO 1
 
@@ -24,6 +25,7 @@ static image buff [3];
 static image buff_letter[3];
 static int buff_index = 0;
 static CvCapture * cap;
+static CvVideoWriter * vwriter;
 static IplImage  * ipl;
 static float fps = 0;
 static float demo_thresh = 0;
@@ -40,6 +42,7 @@ static float *last_avg2;
 static float *last_avg;
 static float *avg;
 double demo_time;
+static int gray = 0;
 
 double get_wall_time()
 {
@@ -77,7 +80,7 @@ void *detect_in_thread(void *ptr)
     printf("\nFPS:%.1f\n",fps);
     printf("Objects:\n\n");
     image display = buff[(buff_index+2) % 3];
-    draw_detections(display, demo_detections, demo_thresh, boxes, probs, 0, demo_names, demo_alphabet, demo_classes);
+    draw_detections(display, demo_detections, demo_thresh, boxes, probs, 0, demo_names, demo_alphabet, demo_classes, 0);
 
     demo_index = (demo_index + 1)%demo_frame;
     running = 0;
@@ -86,7 +89,12 @@ void *detect_in_thread(void *ptr)
 
 void *fetch_in_thread(void *ptr)
 {
-    int status = fill_image_from_stream(cap, buff[buff_index]);
+    int status;
+    if (gray)
+        status = fill_gray_image_from_stream(cap, buff[buff_index]);
+    else
+        status = fill_image_from_stream(cap, buff[buff_index]);
+
     letterbox_image_into(buff[buff_index], net.w, net.h, buff_letter[buff_index]);
     if(status == 0) demo_done = 1;
     return 0;
@@ -133,12 +141,31 @@ void *detect_loop(void *ptr)
     }
 }
 
+void sig_handler(int sig) {
+    switch (sig) {
+    case SIGINT:
+    case SIGTERM:
+        if (vwriter)
+            cvReleaseVideoWriter(&vwriter);
+        exit(0);
+        break;
+
+    default:
+        fprintf(stderr, "Unhandled signal!\n");
+        abort();
+    }
+}
+
 void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const char *filename, char **names, int classes, int delay, char *prefix, int avg_frames, float hier, int w, int h, int frames, int fullscreen)
 {
     demo_delay = delay;
     demo_frame = avg_frames;
     predictions = calloc(demo_frame, sizeof(float*));
     image **alphabet = load_alphabet();
+    char *oname = "output.mp4";
+
+    char *display = getenv("DISPLAY");
+
     demo_names = names;
     demo_alphabet = alphabet;
     demo_classes = classes;
@@ -152,6 +179,9 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     set_batch_network(&net, 1);
     pthread_t detect_thread;
     pthread_t fetch_thread;
+
+    if (net.c == 1)
+        gray = 1;
 
     srand(2222222);
 
@@ -176,6 +206,10 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
 
     layer l = net.layers[net.n-1];
     demo_detections = l.n*l.w*l.h;
+    if (l.bin_class > 0) {
+        classes = 2;
+        demo_classes = classes;
+    }
     int j;
 
     avg = (float *) calloc(l.outputs, sizeof(float));
@@ -194,6 +228,19 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
     buff_letter[1] = letterbox_image(buff[0], net.w, net.h);
     buff_letter[2] = letterbox_image(buff[0], net.w, net.h);
     ipl = cvCreateImage(cvSize(buff[0].w,buff[0].h), IPL_DEPTH_8U, buff[0].c);
+
+    if (oname) {
+        //        int codec = CV_FOURCC('M', 'J', 'P', 'G');
+        int codec = CV_FOURCC('X', '2', '6', '4');
+        vwriter = cvCreateVideoWriter(oname, codec, 25.0,
+                cvSize(net.w, net.h), 1);
+
+        if (vwriter == NULL)
+            error("Cannot create videoWriter\n");
+
+        signal(SIGINT, sig_handler);
+        signal(SIGTERM, sig_handler);
+    }
 
     int count = 0;
     if(!prefix){
@@ -221,7 +268,10 @@ void demo(char *cfgfile, char *weightfile, float thresh, int cam_index, const ch
                 last_avg2 = swap;
                 memcpy(last_avg, avg, l.outputs*sizeof(float));
             }
-            display_in_thread(0);
+            if (display != NULL)
+                display_in_thread(0);
+
+            cvWriteFrame(vwriter, ipl);
         }else{
             char name[256];
             sprintf(name, "%s_%08d", prefix, count);

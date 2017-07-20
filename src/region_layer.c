@@ -10,7 +10,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-layer make_region_layer(int batch, int w, int h, int n, int classes, int coords)
+layer make_region_layer(int batch, int w, int h, int n, int classes, int coords, int bin_class)
 {
     layer l = {0};
     l.type = REGION;
@@ -23,6 +23,7 @@ layer make_region_layer(int batch, int w, int h, int n, int classes, int coords)
     l.out_w = l.w;
     l.out_h = l.h;
     l.out_c = l.c;
+    l.bin_class = bin_class;
     l.classes = classes;
     l.coords = coords;
     l.cost = calloc(1, sizeof(float));
@@ -223,6 +224,8 @@ void forward_region_layer(const layer l, network net)
             }
             if(onlyclass) continue;
         }
+        // tahle smycka nastavuje delty pro boxiky BEZ objektu (k cemu je noobject_scale? Ze by vaha negativu?) -> noobjectness?
+        // pro nizky iterace nastavuje pro tyhle boxiky i delty pozice, pozdeji zustavaj nulovy
         for (j = 0; j < l.h; ++j) {
             for (i = 0; i < l.w; ++i) {
                 for (n = 0; n < l.n; ++n) {
@@ -245,6 +248,7 @@ void forward_region_layer(const layer l, network net)
                         l.delta[obj_index] = 0;
                     }
 
+                    // pro nizsi iterace budu posilat detektory pozice smerem k anchor boxu bez ohledu na objectness
                     if(*(net.seen) < 12800){
                         box truth = {0};
                         truth.x = (i + .5)/l.w;
@@ -256,10 +260,15 @@ void forward_region_layer(const layer l, network net)
                 }
             }
         }
+
+        // tahle smycka nastavuje delty pro detektory dobre pasujici na ground truth
         for(t = 0; t < 30; ++t){
             box truth = float_to_box(net.truth + t*(l.coords + 1) + b*l.truths, 1);
 
-            if(!truth.x) break;
+            if(!truth.x)
+                break;
+            // nastavuju jen pro JEDEN detektor, ktery nejlepe odpovida stredem a velikosti
+
             float best_iou = 0;
             int best_n = 0;
             i = (truth.x * l.w);
@@ -308,6 +317,12 @@ void forward_region_layer(const layer l, network net)
             }
 
             int class = net.truth[t*(l.coords + 1) + b*l.truths + l.coords];
+            if (l.bin_class) {
+                if (class == l.bin_class)
+                    class = 1;
+                else
+                    class = 0;
+            }
             if (l.map) class = l.map[class];
             int class_index = entry_index(l, b, best_n*l.w*l.h + j*l.w + i, l.coords + 1);
             delta_region_class(l.output, l.delta, class_index, class, l.classes, l.softmax_tree, l.class_scale, l.w*l.h, &avg_cat);

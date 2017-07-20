@@ -190,12 +190,15 @@ image **load_alphabet()
     return alphabets;
 }
 
-void draw_detections(image im, int num, float thresh, box *boxes, float **probs, float **masks, char **names, image **alphabet, int classes)
+void draw_detections(image im, int num, float thresh, box *boxes, float **probs, float **masks, char **names, image **alphabet, int classes, int sc)
 {
     int i;
 
     for(i = 0; i < num; ++i){
         int class = max_index(probs[i], classes);
+        if (sc > 0 && class != sc)
+            continue;
+
         float prob = probs[i][class];
         if(prob > thresh){
             int width = im.h * .006;
@@ -550,7 +553,8 @@ image load_image_cv(char *filename, int channels)
     }
     image out = ipl_to_image(src);
     cvReleaseImage(&src);
-    rgbgr_image(out);
+    if (channels == 3)
+        rgbgr_image(out);
     return out;
 }
 
@@ -562,22 +566,74 @@ void flush_stream_buffer(CvCapture *cap, int n)
     }
 }
 
-image get_image_from_stream(CvCapture *cap)
+static image get_image_from_stream2(CvCapture *cap, int togray, int channels)
 {
     IplImage* src = cvQueryFrame(cap);
     if (!src) return make_empty_image(0,0,0);
+    if (togray) {
+        if (channels == 3) {
+            IplImage* gray;
+            gray = cvCreateImage(cvSize(src->width, src->height), 8, 1);
+            cvCvtColor(src, gray, CV_BGR2GRAY);
+            cvMerge(gray, gray, gray, NULL, src);
+            cvReleaseImage(&gray);
+        } else {
+            cvCvtColor(src, src, CV_BGR2GRAY);
+        }
+    }
     image im = ipl_to_image(src);
     rgbgr_image(im);
     return im;
 }
 
-int fill_image_from_stream(CvCapture *cap, image im)
+image get_image_from_stream(CvCapture *cap)
+{
+    return get_image_from_stream2(cap, 0, 0);
+}
+
+image get_gray_image_from_stream(CvCapture *cap)
+{
+    return get_image_from_stream2(cap, 1, 0);
+}
+
+image get_gray_image_from_stream_3c(CvCapture *cap)
+{
+    return get_image_from_stream2(cap, 1, 3);
+}
+
+static int fill_image_from_stream2(CvCapture *cap, int togray, int channels, image im)
 {
     IplImage* src = cvQueryFrame(cap);
     if (!src) return 0;
+    if (togray) {
+        if (channels == 3) {
+            IplImage* gray;
+            gray = cvCreateImage(cvSize(src->width, src->height), 8, 1);
+            cvCvtColor(src, gray, CV_BGR2GRAY);
+            cvMerge(gray, gray, gray, NULL, src);
+            cvReleaseImage(&gray);
+        } else {
+            cvCvtColor(src, src, CV_BGR2GRAY);
+        }
+    }
     ipl_into_image(src, im);
     rgbgr_image(im);
     return 1;
+}
+
+int fill_image_from_stream(CvCapture *cap, image im)
+{
+    return fill_image_from_stream2(cap, 0, 0, im);
+}
+
+int fill_gray_image_from_stream(CvCapture *cap, image im)
+{
+    return fill_image_from_stream2(cap, 1, 0, im);
+}
+
+int fill_gray_image_from_stream_3c(CvCapture *cap, image im)
+{
+    return fill_image_from_stream2(cap, 1, 3, im);
 }
 
 void save_image_jpg(image p, const char *name)
@@ -1171,6 +1227,68 @@ void scale_image_channel(image im, int c, float v)
     }
 }
 
+void scale_image_channel_sym(image im, int c, float v)
+{
+    int x1, y1, x2, y2, grad;
+    x1 = rand_int(10, im.w - 10);
+    y1 = rand_int(10, im.h - 10);
+    x2 = rand_int(10, im.w - 10);
+    y2 = rand_int(10, im.h - 10);
+    grad = rand_int(0, 15);
+
+    float a = (float)(y2 - y1)/(x2 - x1);
+    float b = y1 - a*x1;
+
+    int i, j;
+    for(j = 0; j < im.h; ++j){
+        for(i = 0; i < im.w; ++i){
+            float pix = get_pixel(im, i, j, c);
+            float dist = (a*i - j + b) / sqrt(a*a + 1);
+
+            float vt = v;
+            if (dist > 0) {
+                if (dist < grad)
+                    vt = v - (float) dist/grad * (v - 1.0);
+                else
+                    vt = 1.0;
+            }
+
+            pix = (pix - 0.5)*vt + 0.5;
+            if (pix > 1) pix = 1.0f;
+            if (pix < 0) pix = 0.0f;
+
+            set_pixel(im, i, j, c, pix);
+        }
+    }
+}
+
+float gaussian(float in, float mu, float sigma)
+{
+    return exp(-0.5 * pow(((in - mu)/sigma), 2));
+}
+
+void image_channel_point_light(image im, int c, float v, int x, int y, int size)
+{
+    int i, j;
+    size = rand_int(0, size);
+    v = rand_uniform(0, v);
+
+    for(j = 0; j < im.h; ++j){
+        for(i = 0; i < im.w; ++i){
+            float pix = get_pixel(im, i, j, c);
+
+            float vt = 0;
+            float dist = sqrt((i-x)*(i-x) + (j-y)*(j-y));
+            vt = v * gaussian(dist, 0, size);
+
+            pix = pix + vt;
+            if (pix > 1) pix = 1.0f;
+            if (pix < 0) pix = 0.0f;
+            set_pixel(im, i, j, c, pix);
+        }
+    }
+}
+
 void translate_image_channel(image im, int c, float v)
 {
     int i, j;
@@ -1223,18 +1341,29 @@ void exposure_image(image im, float sat)
     constrain_image(im);
 }
 
+#define BETTER_AUGMENT
 void distort_image(image im, float hue, float sat, float val)
 {
-    rgb_to_hsv(im);
-    scale_image_channel(im, 1, sat);
-    scale_image_channel(im, 2, val);
+    if (im.c == 3) {
+        rgb_to_hsv(im);
+        scale_image_channel(im, 1, sat);
+#if defined BETTER_AUGMENT
+        scale_image_channel_sym(im, 2, val);
+        image_channel_point_light(im, 2, val, rand_int(0, im.w), rand_int(0, im.h), im.h/4);
+#else
+        scale_image_channel(im, 1, val);
+#endif
+    }
+
     int i;
     for(i = 0; i < im.w*im.h; ++i){
         im.data[i] = im.data[i] + hue;
         if (im.data[i] > 1) im.data[i] -= 1;
         if (im.data[i] < 0) im.data[i] += 1;
     }
-    hsv_to_rgb(im);
+
+    if (im.c == 3)
+        hsv_to_rgb(im);
     constrain_image(im);
 }
 

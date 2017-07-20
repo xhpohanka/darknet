@@ -36,6 +36,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
 
     int classes = l.classes;
     float jitter = l.jitter;
+    float jitter_shift = l.jitter_shift;
 
     list *plist = get_paths(train_images);
     //int N = plist->size;
@@ -48,6 +49,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     args.m = plist->size;
     args.classes = classes;
     args.jitter = jitter;
+    args.jitter_shift = jitter_shift;
     args.num_boxes = l.max_boxes;
     args.d = &buffer;
     args.type = DETECTION_DATA;
@@ -355,19 +357,19 @@ void validate_detector_flip(char *datacfg, char *cfgfile, char *weightfile, char
         if(fps) fclose(fps[j]);
     }
     if(coco){
-        fseek(fp, -2, SEEK_CUR); 
+        fseek(fp, -2, SEEK_CUR);
         fprintf(fp, "\n]\n");
         fclose(fp);
     }
     fprintf(stderr, "Total Detection Time: %f Seconds\n", (double)(time(0) - start));
 }
 
-
 void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *outfile)
 {
     int j;
     list *options = read_data_cfg(datacfg);
     char *valid_images = option_find_str(options, "valid", "data/train.list");
+    char *vfile = option_find_str(options, "valid_video", "");
     char *name_list = option_find_str(options, "names", "data/names.list");
     char *prefix = option_find_str(options, "results", "results");
     char **names = get_labels(name_list);
@@ -383,11 +385,20 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
     fprintf(stderr, "Learning Rate: %g, Momentum: %g, Decay: %g\n", net.learning_rate, net.momentum, net.decay);
     srand(time(0));
 
-    list *plist = get_paths(valid_images);
-    char **paths = (char **)list_to_array(plist);
+    int video = (strlen(vfile) > 0);
+
+    list *plist = NULL;
+    char **paths = NULL;
+
+    if (!video) {
+        plist = get_paths(valid_images);
+        paths = (char **)list_to_array(plist);
+    }
 
     layer l = net.layers[net.n-1];
     int classes = l.classes;
+    if (l.bin_class > 0)
+        classes = 2;
 
     char buff[1024];
     char *type = option_find_str(options, "eval", "voc");
@@ -429,22 +440,45 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
     float nms = .45;
 
     int nthreads = 4;
+    if (video)
+        nthreads = 1;
+
     image *val = calloc(nthreads, sizeof(image));
     image *val_resized = calloc(nthreads, sizeof(image));
     image *buf = calloc(nthreads, sizeof(image));
     image *buf_resized = calloc(nthreads, sizeof(image));
     pthread_t *thr = calloc(nthreads, sizeof(pthread_t));
+    double *vpos = calloc(nthreads, sizeof(double));
 
     load_args args = {0};
     args.w = net.w;
     args.h = net.h;
-    //args.type = IMAGE_DATA;
+    args.c = net.c;
     args.type = LETTERBOX_DATA;
+
+    if (video) {
+#if defined OPENCV
+        printf("video file: %s\n", vfile);
+        args.cap = cvCaptureFromFile(vfile);
+        args.type = VIDEO_DATA;
+
+        if(!args.cap)
+            file_error(vfile);
+
+        m = cvGetCaptureProperty(args.cap, CV_CAP_PROP_FRAME_COUNT);
+#endif
+    } else {
+        m = plist->size;
+    }
 
     for(t = 0; t < nthreads; ++t){
         args.path = paths[i+t];
         args.im = &buf[t];
         args.resized = &buf_resized[t];
+#if defined OPENCV
+        if (video)
+            vpos[t] = cvGetCaptureProperty(args.cap, CV_CAP_PROP_POS_FRAMES);
+#endif
         thr[t] = load_data_in_thread(args);
     }
     time_t start = time(0);
@@ -459,11 +493,24 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
             args.path = paths[i+t];
             args.im = &buf[t];
             args.resized = &buf_resized[t];
+#if defined OPENCV
+            if (video)
+                vpos[t] = (unsigned long long) cvGetCaptureProperty(args.cap, CV_CAP_PROP_POS_FRAMES);
+#endif
             thr[t] = load_data_in_thread(args);
         }
         for(t = 0; t < nthreads && i+t-nthreads < m; ++t){
-            char *path = paths[i+t-nthreads];
-            char *id = basecfg(path);
+            char str[64];
+            char *path = NULL;
+            char *id;
+            if (video) {
+                sprintf(str, "%f", vpos[t]);
+                id = str;
+            }
+            else {
+                path = paths[i+t-nthreads];
+                id = basecfg(path);
+            }
             float *X = val_resized[t].data;
             network_predict(net, X);
             int w = val[t].w;
@@ -477,7 +524,8 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
             } else {
                 print_detector_detections(fps, id, boxes, probs, l.w*l.h*l.n, classes, w, h);
             }
-            free(id);
+            if (!video)
+                free(id);
             free_image(val[t]);
             free_image(val_resized[t]);
         }
@@ -538,8 +586,12 @@ void validate_detector_recall(char *cfgfile, char *weightfile)
         char labelpath[4096];
         find_replace(path, "images", "labels", labelpath);
         find_replace(labelpath, "JPEGImages", "labels", labelpath);
+        find_replace(labelpath, "PNGImages", "labels", labelpath);
+        find_replace(labelpath, "SrcImages", "labels", labelpath);
         find_replace(labelpath, ".jpg", ".txt", labelpath);
         find_replace(labelpath, ".JPEG", ".txt", labelpath);
+        find_replace(labelpath, ".png", ".txt", labelpath);
+        find_replace(labelpath, ".bmp", ".txt", labelpath);
 
         int num_labels = 0;
         box_label *truth = read_boxes(labelpath, &num_labels);
@@ -623,7 +675,7 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
         get_region_boxes(l, im.w, im.h, net.w, net.h, thresh, probs, boxes, masks, 0, 0, hier_thresh, 1);
         if (nms) do_nms_obj(boxes, probs, l.w*l.h*l.n, l.classes, nms);
         //else if (nms) do_nms_sort(boxes, probs, l.w*l.h*l.n, l.classes, nms);
-        draw_detections(im, l.w*l.h*l.n, thresh, boxes, probs, masks, names, alphabet, l.classes);
+        draw_detections(im, l.w*l.h*l.n, thresh, boxes, probs, masks, names, alphabet, l.classes, 0);
         if(outfile){
             save_image(im, outfile);
         }

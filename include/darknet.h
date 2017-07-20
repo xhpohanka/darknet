@@ -150,6 +150,7 @@ struct layer{
     float dot;
     float angle;
     float jitter;
+    float jitter_shift;
     float saturation;
     float exposure;
     float shift;
@@ -158,6 +159,7 @@ struct layer{
     int softmax;
     int classes;
     int coords;
+    int bin_class;
     int background;
     int rescore;
     int objectness;
@@ -509,7 +511,9 @@ typedef struct{
 } data;
 
 typedef enum {
-    CLASSIFICATION_DATA, DETECTION_DATA, CAPTCHA_DATA, REGION_DATA, IMAGE_DATA, COMPARE_DATA, WRITING_DATA, SWAG_DATA, TAG_DATA, OLD_CLASSIFICATION_DATA, STUDY_DATA, DET_DATA, SUPER_DATA, LETTERBOX_DATA, REGRESSION_DATA, SEGMENTATION_DATA, INSTANCE_DATA
+    CLASSIFICATION_DATA, DETECTION_DATA, CAPTCHA_DATA, REGION_DATA, IMAGE_DATA, COMPARE_DATA,
+    WRITING_DATA, SWAG_DATA, TAG_DATA, OLD_CLASSIFICATION_DATA, STUDY_DATA, DET_DATA, SUPER_DATA,
+    LETTERBOX_DATA, REGRESSION_DATA, SEGMENTATION_DATA, INSTANCE_DATA, VIDEO_DATA, GRAYED_VIDEO_DATA
 } data_type;
 
 typedef struct load_args{
@@ -521,6 +525,7 @@ typedef struct load_args{
     char **labels;
     int h;
     int w;
+    int c;
     int out_w;
     int out_h;
     int nh;
@@ -533,6 +538,7 @@ typedef struct load_args{
     int center;
     int coords;
     float jitter;
+    float jitter_shift;
     float angle;
     float aspect;
     float saturation;
@@ -543,6 +549,15 @@ typedef struct load_args{
     image *resized;
     data_type type;
     tree *hierarchy;
+#if !defined __CUDACC__
+#if defined OPENCV
+    CvCapture *cap;
+#endif
+#else
+#if defined OPENCV
+    void *cap;
+#endif
+#endif
 } load_args;
 
 typedef struct{
@@ -687,7 +702,7 @@ void do_nms(box *boxes, float **probs, int total, int classes, float thresh);
 data load_all_cifar10();
 box_label *read_boxes(char *filename, int *n);
 box float_to_box(float *f, int stride);
-void draw_detections(image im, int num, float thresh, box *boxes, float **probs, float **masks, char **names, image **alphabet, int classes);
+void draw_detections(image im, int num, float thresh, box *boxes, float **probs, float **masks, char **names, image **alphabet, int classes, int sc);
 
 matrix network_predict_data(network net, data test);
 image **load_alphabet();

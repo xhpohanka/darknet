@@ -12,6 +12,8 @@
 #ifndef __cplusplus
 #ifdef OPENCV
 int fill_image_from_stream(CvCapture *cap, image im);
+int fill_gray_image_from_stream(CvCapture *cap, image im);
+int fill_gray_image_from_stream_3c(CvCapture *cap, image im);
 image ipl_to_image(IplImage* src);
 void ipl_into_image(IplImage* src, image im);
 void flush_stream_buffer(CvCapture *cap, int n);
