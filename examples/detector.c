@@ -433,7 +433,6 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
     float **probs = calloc(l.w*l.h*l.n, sizeof(float *));
     for(j = 0; j < l.w*l.h*l.n; ++j) probs[j] = calloc(classes+1, sizeof(float *));
 
-    int m = plist->size;
     int i=0;
     int t;
 
@@ -457,6 +456,7 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
     args.c = net.c;
     args.type = LETTERBOX_DATA;
 
+    int m = 0;
     if (video) {
 #if defined OPENCV
         printf("video file: %s\n", vfile);
@@ -473,12 +473,14 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
     }
 
     for(t = 0; t < nthreads; ++t){
-        args.path = paths[i+t];
+
         args.im = &buf[t];
         args.resized = &buf_resized[t];
 #if defined OPENCV
         if (video)
             vpos[t] = cvGetCaptureProperty(args.cap, CV_CAP_PROP_POS_FRAMES);
+        else
+            args.path = paths[i+t];
 #endif
         thr[t] = load_data_in_thread(args);
     }
@@ -491,12 +493,13 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
             val_resized[t] = buf_resized[t];
         }
         for(t = 0; t < nthreads && i+t < m; ++t){
-            args.path = paths[i+t];
             args.im = &buf[t];
             args.resized = &buf_resized[t];
 #if defined OPENCV
             if (video)
                 vpos[t] = (unsigned long long) cvGetCaptureProperty(args.cap, CV_CAP_PROP_POS_FRAMES);
+            else
+                args.path = paths[i+t];
 #endif
             thr[t] = load_data_in_thread(args);
         }
