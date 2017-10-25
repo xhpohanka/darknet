@@ -56,6 +56,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     args.type = DETECTION_DATA;
     //args.type = INSTANCE_DATA;
     args.threads = 64;
+    args.c = net->c;
 
     pthread_t load_thread = load_data(args);
     double time;
@@ -304,6 +305,7 @@ void validate_detector_flip(char *datacfg, char *cfgfile, char *weightfile, char
     load_args args = {0};
     args.w = net->w;
     args.h = net->h;
+    args.c = net->c;
     //args.type = IMAGE_DATA;
     args.type = LETTERBOX_DATA;
 

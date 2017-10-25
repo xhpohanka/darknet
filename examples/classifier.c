@@ -58,6 +58,7 @@ void train_classifier(char *datacfg, char *cfgfile, char *weightfile, int *gpus,
     load_args args = {0};
     args.w = net->w;
     args.h = net->h;
+    args.c = net->c;
     args.threads = 32;
     args.hierarchy = net->hierarchy;
 
@@ -188,6 +189,7 @@ void validate_classifier_crop(char *datacfg, char *filename, char *weightfile)
     load_args args = {0};
     args.w = net->w;
     args.h = net->h;
+    args.c = net->c;
 
     args.paths = paths;
     args.classes = classes;
@@ -659,6 +661,7 @@ void test_classifier(char *datacfg, char *cfgfile, char *weightfile, int target_
     load_args args = {0};
     args.w = net->w;
     args.h = net->h;
+    args.c = net->c;
     args.paths = paths;
     args.classes = classes;
     args.n = net->batch;
