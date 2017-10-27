@@ -63,6 +63,21 @@ void binarize_input(float *input, int n, int size, float *binary)
     }
 }
 
+void trim_fixed_point(float *weights, int n, int bit_width, int fl, float *quantized)
+{
+    int i = 0;
+
+    float max_data = (powf(2, bit_width - 1) - 1) * powf(2, -fl);
+    float min_data = -powf(2, bit_width - 1) * powf(2, -fl);
+
+    for(i = 0; i < n; ++i){
+        quantized[i] = fmax(fmin(weights[i], max_data), min_data);
+        quantized[i] /= powf(2, -fl);
+        quantized[i] = rint(quantized[i]); // tady je samozrejme vic moznosti, napr to rezat stochasticky
+        quantized[i] *= powf(2, -fl);
+    }
+}
+
 int convolutional_out_height(convolutional_layer l)
 {
     return (l.h + 2*l.pad - l.size) / l.stride + 1;
@@ -173,7 +188,7 @@ void cudnn_convolutional_setup(layer *l)
 #endif
 #endif
 
-convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int n, int groups, int size, int stride, int padding, ACTIVATION activation, int batch_normalize, int binary, int xnor, int adam)
+convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int n, int groups, int size, int stride, int padding, ACTIVATION activation, int batch_normalize, int binary, int xnor, int quantize, int adam)
 {
     int i;
     convolutional_layer l = {0};
@@ -186,6 +201,7 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
     l.n = n;
     l.binary = binary;
     l.xnor = xnor;
+    l.quantize = quantize;
     l.batch = batch;
     l.stride = stride;
     l.size = size;
@@ -228,6 +244,10 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
     if(xnor){
         l.binary_weights = calloc(l.nweights, sizeof(float));
         l.binary_input = calloc(l.inputs*l.batch, sizeof(float));
+    }
+    if(quantize){
+        l.weights_quantized = calloc(c/groups*n*size*size, sizeof(float));
+        l.biases_quantized = calloc(n, sizeof(float));
     }
 
     if(batch_normalize){
@@ -287,6 +307,10 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
         if(xnor){
             l.binary_weights_gpu = cuda_make_array(l.weights, l.nweights);
             l.binary_input_gpu = cuda_make_array(0, l.inputs*l.batch);
+        }
+        if(quantize){
+            l.weights_quantized_gpu = cuda_make_array(l.weights, l.nweights);
+            l.biases_quantized_gpu = cuda_make_array(l.biases, n);
         }
 
         if(batch_normalize){
@@ -454,6 +478,11 @@ void forward_convolutional_layer(convolutional_layer l, network net)
         binarize_cpu(net.input, l.c*l.h*l.w*l.batch, l.binary_input);
         net.input = l.binary_input;
     }
+    if(l.quantize){
+        trim_fixed_point(net.input, l.inputs*l.batch, l.bits_data, l.fl_in, net.input);
+        trim_fixed_point(l.weights, l.nweights, l.bits_params, l.fl_weights, l.weights_quantized);
+        trim_fixed_point(l.biases, l.nbiases, l.bits_params, l.fl_biases, l.biases_quantized);
+    }
 
     int m = l.n/l.groups;
     int k = l.size*l.size*l.c/l.groups;
@@ -476,6 +505,10 @@ void forward_convolutional_layer(convolutional_layer l, network net)
         add_bias(l.output, l.biases, l.batch, l.n, l.out_h*l.out_w);
     }
 
+    if(l.quantize){
+        trim_fixed_point(l.output, l.outputs*l.batch, l.bits_data, l.fl_out, l.output);
+    }
+
     activate_array(l.output, l.outputs*l.batch, l.activation);
     if(l.binary || l.xnor) swap_binary(&l);
 }
@@ -486,6 +519,10 @@ void backward_convolutional_layer(convolutional_layer l, network net)
     int m = l.n/l.groups;
     int n = l.size*l.size*l.c/l.groups;
     int k = l.out_w*l.out_h;
+    float *weights = l.weights;
+
+    if (l.quantize)
+        weights = l.weights_quantized;
 
     gradient_array(l.output, l.outputs*l.batch, l.activation, l.delta);
 
@@ -508,7 +545,7 @@ void backward_convolutional_layer(convolutional_layer l, network net)
             gemm(0,1,m,n,k,1,a,k,b,k,1,c,n);
 
             if(net.delta){
-                a = l.weights + j*l.nweights/l.groups;
+                a = weights + j*l.nweights/l.groups;
                 b = l.delta + (i*l.groups + j)*m*k;
                 c = net.workspace;
 

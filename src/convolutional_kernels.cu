@@ -70,6 +70,26 @@ void binarize_weights_gpu(float *weights, int n, int size, float *binary)
     check_error(cudaPeekAtLastError());
 }
 
+__global__ void trim_fixed_point_kernel(float *weights, int n, int bit_width, int fl, float min_data, float max_data, float *quantized)
+{
+    int i = (blockIdx.x + blockIdx.y*gridDim.x) * blockDim.x + threadIdx.x;
+    if (i >= n) return;
+
+    quantized[i] = fmax(fmin(weights[i], max_data), min_data);
+    quantized[i] /= powf(2, -fl);
+    quantized[i] = rint(quantized[i]); // tady je samozrejme vic moznosti, napr to rezat stochasticky
+    quantized[i] *= powf(2, -fl);
+}
+
+void trim_fixed_point_gpu(float *weights, int n, int bit_width, int fl, float *quantized)
+{
+    float max_data = (powf(2, bit_width - 1) - 1) * powf(2, -fl);
+    float min_data = -powf(2, bit_width - 1) * powf(2, -fl);
+
+    trim_fixed_point_kernel<<<cuda_gridsize(n), BLOCK>>>(weights, n, bit_width, fl, min_data, max_data, quantized);
+    check_error(cudaPeekAtLastError());
+}
+
 void forward_convolutional_layer_gpu(convolutional_layer l, network net)
 {
     fill_gpu(l.outputs*l.batch, 0, l.output_gpu, 1);
@@ -83,6 +103,11 @@ void forward_convolutional_layer_gpu(convolutional_layer l, network net)
         swap_binary(&l);
         binarize_gpu(net.input_gpu, l.c*l.h*l.w*l.batch, l.binary_input_gpu);
         net.input_gpu = l.binary_input_gpu;
+    }
+    if(l.quantize){
+        trim_fixed_point_gpu(net.input_gpu, l.inputs*l.batch, l.bits_data, l.fl_in, net.input_gpu);
+        trim_fixed_point_gpu(l.weights_gpu, l.nweights, l.bits_params, l.fl_weights, l.weights_quantized_gpu);
+        trim_fixed_point_gpu(l.biases_gpu, l.nbiases, l.bits_params, l.fl_biases, l.biases_quantized_gpu);
     }
 
 #ifdef CUDNN
@@ -123,6 +148,10 @@ void forward_convolutional_layer_gpu(convolutional_layer l, network net)
         forward_batchnorm_layer_gpu(l, net);
     } else {
         add_bias_gpu(l.output_gpu, l.biases_gpu, l.batch, l.n, l.out_w*l.out_h);
+    }
+
+    if(l.quantize){
+        trim_fixed_point_gpu(l.output_gpu, l.outputs*l.batch, l.bits_data, l.fl_out, l.output_gpu);
     }
 
     activate_array_gpu(l.output_gpu, l.outputs*l.batch, l.activation);
@@ -188,6 +217,10 @@ void backward_convolutional_layer_gpu(convolutional_layer l, network net)
     }
     float *original_input = net.input_gpu;
 
+    float *weights_gpu = l.weights_gpu;
+    if (l.quantize)
+        weights_gpu = l.weights_quantized_gpu;
+
     if(l.xnor) net.input_gpu = l.binary_input_gpu;
 #ifdef CUDNN
     float one = 1;
@@ -210,7 +243,7 @@ void backward_convolutional_layer_gpu(convolutional_layer l, network net)
         cudnnConvolutionBackwardData(cudnn_handle(),
                 &one,
                 l.weightDesc,
-                l.weights_gpu,
+                weights_gpu,
                 l.ddstTensorDesc,
                 l.delta_gpu,
                 l.convDesc,
@@ -244,13 +277,13 @@ void backward_convolutional_layer_gpu(convolutional_layer l, network net)
 
             if(net.delta_gpu){
                 if(l.binary || l.xnor) swap_binary(&l);
-                a = l.weights_gpu + j*l.nweights/l.groups;
+                a = weights_gpu + j*l.nweights/l.groups;
                 b = l.delta_gpu + (i*l.groups + j)*m*k;
                 c = net.workspace;
 
                 gemm_gpu(1,0,n,k,m,1,a,n,b,k,0,c,k);
 
-                col2im_gpu(net.workspace, l.c/l.groups, l.h, l.w, l.size, l.stride, 
+                col2im_gpu(net.workspace, l.c/l.groups, l.h, l.w, l.size, l.stride,
                     l.pad, net.delta_gpu + (i*l.groups + j)*l.c/l.groups*l.h*l.w);
                 if(l.binary || l.xnor) {
                     swap_binary(&l);

@@ -188,10 +188,18 @@ convolutional_layer parse_convolutional(list *options, size_params params)
     int batch_normalize = option_find_int_quiet(options, "batch_normalize", 0);
     int binary = option_find_int_quiet(options, "binary", 0);
     int xnor = option_find_int_quiet(options, "xnor", 0);
+    int quantize = option_find_int_quiet(options, "quantized", 0);
 
-    convolutional_layer layer = make_convolutional_layer(batch,h,w,c,n,groups,size,stride,padding,activation, batch_normalize, binary, xnor, params.net->adam);
+    convolutional_layer layer = make_convolutional_layer(batch,h,w,c,n,groups,size,stride,padding,activation, batch_normalize, binary, xnor, quantize, params.net->adam);
     layer.flipped = option_find_int_quiet(options, "flipped", 0);
     layer.dot = option_find_float_quiet(options, "dot", 0);
+
+    layer.bits_data = option_find_int_quiet(options, "bits_data", 0);
+    layer.bits_params = option_find_int_quiet(options, "bits_params", 0);
+    layer.fl_in = option_find_int_quiet(options, "fl_in", 0);
+    layer.fl_out = option_find_int_quiet(options, "fl_out", 0);
+    layer.fl_weights = option_find_int_quiet(options, "fl_weights", 0);
+    layer.fl_biases = option_find_int_quiet(options, "fl_biases", 0);
 
     return layer;
 }

@@ -146,6 +146,13 @@ struct layer{
     int index;
     int binary;
     int xnor;
+    int quantize;
+    int fl_in;
+    int fl_out;
+    int fl_weights;
+    int fl_biases;
+    int bits_params;
+    int bits_data;
     int steps;
     int hidden;
     int truth;
@@ -219,12 +226,14 @@ struct layer{
 
     float * biases;
     float * bias_updates;
+    float * biases_quantized;
 
     float * scales;
     float * scale_updates;
 
     float * weights;
     float * weight_updates;
+    float * weights_quantized;
 
     float * delta;
     float * output;
@@ -379,10 +388,12 @@ struct layer{
     float * weights_gpu;
     float * weight_updates_gpu;
     float * weight_change_gpu;
+    float * weights_quantized_gpu;
 
     float * biases_gpu;
     float * bias_updates_gpu;
     float * bias_change_gpu;
+    float * biases_quantized_gpu;
 
     float * scales_gpu;
     float * scale_updates_gpu;
