@@ -248,8 +248,10 @@ void forward_region_layer(const layer l, network net)
                     }
                     int obj_index = entry_index(l, b, n*l.w*l.h + j*l.w + i, l.coords);
                     avg_anyobj += l.output[obj_index];
+                    // pro vsechny detektory tahnu objectness k nule
                     l.delta[obj_index] = l.noobject_scale * (0 - l.output[obj_index]);
                     if(l.background) l.delta[obj_index] = l.noobject_scale * (1 - l.output[obj_index]);
+                    // pokud se ale prekrejva s anotaci aspon o threshold, neucim
                     if (best_iou > l.thresh) {
                         l.delta[obj_index] = 0;
                     }
@@ -270,11 +272,14 @@ void forward_region_layer(const layer l, network net)
         // tahle smycka nastavuje delty pro detektory dobre pasujici na ground truth
         for(t = 0; t < 30; ++t){
             box truth = float_to_box(net.truth + t*(l.coords + 1) + b*l.truths, 1);
-
             if(!truth.x)
                 break;
-            // nastavuju jen pro JEDEN detektor, ktery nejlepe odpovida stredem a velikosti
 
+            int class = net.truth[t*(l.coords + 1) + b*l.truths + l.coords];
+            if (class >= l.classes)
+                continue;
+
+            // nastavuju jen pro JEDEN detektor, ktery nejlepe odpovida stredem a velikosti
             float best_iou = 0;
             int best_n = 0;
             i = (truth.x * l.w);
@@ -322,7 +327,6 @@ void forward_region_layer(const layer l, network net)
                 l.delta[obj_index] = l.object_scale * (0 - l.output[obj_index]);
             }
 
-            int class = net.truth[t*(l.coords + 1) + b*l.truths + l.coords];
             if (l.bin_class) {
                 if (class == l.bin_class)
                     class = 1;
