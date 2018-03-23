@@ -225,8 +225,7 @@ void correct_boxes(box_label *boxes, int n, float dx, float dy, float sx, float 
 void fill_truth_swag(char *path, float *truth, int classes, int flip, float dx, float dy, float sx, float sy)
 {
     char labelpath[4096];
-    find_replace(path, "images", "labels", labelpath);
-    find_replace(labelpath, "JPEGImages", "labels", labelpath);
+    find_replace(path, "JPEGImages", "labels", labelpath);
     find_replace(labelpath, "PNGImages", "labels", labelpath);
     find_replace(labelpath, "SrcImages", "labels", labelpath);
     find_replace(labelpath, ".jpg", ".txt", labelpath);
@@ -266,8 +265,7 @@ void fill_truth_swag(char *path, float *truth, int classes, int flip, float dx, 
 void fill_truth_region(char *path, float *truth, int classes, int num_boxes, int flip, float dx, float dy, float sx, float sy)
 {
     char labelpath[4096];
-    find_replace(path, "images", "labels", labelpath);
-    find_replace(labelpath, "JPEGImages", "labels", labelpath);
+    find_replace(path, "JPEGImages", "labels", labelpath);
     find_replace(labelpath, "PNGImages", "labels", labelpath);
     find_replace(labelpath, "SrcImages", "labels", labelpath);
 
@@ -378,8 +376,7 @@ box bound_image(image im)
 void fill_truth_iseg(char *path, int num_boxes, float *truth, int classes, int w, int h, augment_args aug, int flip, int mw, int mh)
 {
     char labelpath[4096];
-    find_replace(path, "images", "mask", labelpath);
-    find_replace(labelpath, "JPEGImages", "mask", labelpath);
+    find_replace(path, "JPEGImages", "mask", labelpath);
     find_replace(labelpath, ".jpg", ".txt", labelpath);
     find_replace(labelpath, ".JPG", ".txt", labelpath);
     find_replace(labelpath, ".JPEG", ".txt", labelpath);
@@ -423,8 +420,7 @@ void fill_truth_iseg(char *path, int num_boxes, float *truth, int classes, int w
 void fill_truth_detection(char *path, int num_boxes, float *truth, int classes, int flip, float dx, float dy, float sx, float sy)
 {
     char labelpath[4096];
-    find_replace(path, "images", "labels", labelpath);
-    find_replace(labelpath, "JPEGImages", "labels", labelpath);
+    find_replace(path, "JPEGImages", "labels", labelpath);
     find_replace(labelpath, "PNGImages", "labels", labelpath);
     find_replace(labelpath, "SrcImages", "labels", labelpath);
 
@@ -642,8 +638,7 @@ void free_data(data d)
 image get_segmentation_image(char *path, int w, int h, int classes)
 {
     char labelpath[4096];
-    find_replace(path, "images", "mask", labelpath);
-    find_replace(labelpath, "JPEGImages", "mask", labelpath);
+    find_replace(path, "JPEGImages", "mask", labelpath);
     find_replace(labelpath, ".jpg", ".txt", labelpath);
     find_replace(labelpath, ".JPG", ".txt", labelpath);
     find_replace(labelpath, ".JPEG", ".txt", labelpath);
@@ -669,8 +664,7 @@ image get_segmentation_image(char *path, int w, int h, int classes)
 image get_segmentation_image2(char *path, int w, int h, int classes)
 {
     char labelpath[4096];
-    find_replace(path, "images", "mask", labelpath);
-    find_replace(labelpath, "JPEGImages", "mask", labelpath);
+    find_replace(path, "JPEGImages", "mask", labelpath);
     find_replace(labelpath, ".jpg", ".txt", labelpath);
     find_replace(labelpath, ".JPG", ".txt", labelpath);
     find_replace(labelpath, ".JPEG", ".txt", labelpath);
