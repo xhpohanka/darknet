@@ -166,6 +166,7 @@ struct layer{
     float shift;
     float ratio;
     float learning_rate_scale;
+    float min_size;
     int softmax;
     int classes;
     int coords;

@@ -147,7 +147,11 @@ matrix load_image_augment_paths(char **paths, int c, int n, int min, int max, in
 box_label *read_boxes(char *filename, int *n)
 {
     FILE *file = fopen(filename, "r");
-    if(!file) file_error(filename);
+    if(!file) {
+        fprintf(stderr, "warning: labels %s does not exists\n", filename);
+        *n = 0;
+        return NULL;
+    }
     float x, y, h, w;
     int id;
     int count = 0;

@@ -277,7 +277,11 @@ void forward_region_layer(const layer l, network net)
                 break;
 
             int class = net.truth[t*(l.coords + 1) + b*l.truths + l.coords];
-            if (class >= l.classes)
+            if (class < 0 || class >= l.classes)
+                continue;
+
+            // nebudem ucit pidiobjekty
+            if (truth.w < l.min_size || truth.h < l.min_size)
                 continue;
 
             // nastavuju jen pro JEDEN detektor, ktery nejlepe odpovida stredem a velikosti
