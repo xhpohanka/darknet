@@ -29,7 +29,7 @@ data load_data_tag(char **paths, int n, int m, int c, int k, int min, int max, i
 matrix load_image_augment_paths(char **paths, int c, int n, int min, int max, int size, float angle, float aspect, float hue, float saturation, float exposure, int center);
 data load_data_super(char **paths, int n, int m, int w, int h, int scale);
 data load_data_augment(char **paths, int n, int m, int c, char **labels, int k, tree *hierarchy, int min, int max, int size, float angle, float aspect, float hue, float saturation, float exposure, int center);
-data load_data_regression(char **paths, int n, int m, int c, int min, int max, int size, float angle, float aspect, float hue, float saturation, float exposure);
+data load_data_regression(char **paths, int n, int m, int c, int classes, int min, int max, int size, float angle, float aspect, float hue, float saturation, float exposure);
 data load_go(char *filename);
 
 

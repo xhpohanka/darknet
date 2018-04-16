@@ -165,24 +165,24 @@ void cudnn_convolutional_setup(layer *l)
             l->weightDesc,
             l->convDesc,
             l->dstTensorDesc,
-            CUDNN_CONVOLUTION_FWD_PREFER_FASTEST,
-            0,
+            CUDNN_CONVOLUTION_FWD_SPECIFY_WORKSPACE_LIMIT,
+            4000000000,
             &l->fw_algo);
     cudnnGetConvolutionBackwardDataAlgorithm(cudnn_handle(),
             l->weightDesc,
             l->ddstTensorDesc,
             l->convDesc,
             l->dsrcTensorDesc,
-            CUDNN_CONVOLUTION_BWD_DATA_PREFER_FASTEST,
-            0,
+            CUDNN_CONVOLUTION_BWD_DATA_SPECIFY_WORKSPACE_LIMIT,
+            4000000000,
             &l->bd_algo);
     cudnnGetConvolutionBackwardFilterAlgorithm(cudnn_handle(),
             l->srcTensorDesc,
             l->ddstTensorDesc,
             l->convDesc,
             l->dweightDesc,
-            CUDNN_CONVOLUTION_BWD_FILTER_PREFER_FASTEST,
-            0,
+            CUDNN_CONVOLUTION_BWD_FILTER_SPECIFY_WORKSPACE_LIMIT,
+            4000000000,
             &l->bf_algo);
 }
 #endif
@@ -219,6 +219,7 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
 
     // float scale = 1./sqrt(size*size*c);
     float scale = sqrt(2./(size*size*c/l.groups));
+    //printf("convscale %f\n", scale);
     //scale = .02;
     //for(i = 0; i < c*n*size*size; ++i) l.weights[i] = scale*rand_uniform(-1, 1);
     for(i = 0; i < l.nweights; ++i) l.weights[i] = scale*rand_normal();
@@ -345,8 +346,7 @@ convolutional_layer make_convolutional_layer(int batch, int h, int w, int c, int
     l.workspace_size = get_workspace_size(l);
     l.activation = activation;
 
-    fprintf(stderr, "conv  %5d %2d x%2d /%2d  %4d x%4d x%4d   ->  %4d x%4d x%4d -> %4llu\n", n, size, size, stride,
-            w, h, c, l.out_w, l.out_h, l.out_c, (unsigned long long)size*size * w*h*c*n/stride/stride);
+    fprintf(stderr, "conv  %5d %2d x%2d /%2d  %4d x%4d x%4d   ->  %4d x%4d x%4d  %5.3f BFLOPs\n", n, size, size, stride, w, h, c, l.out_w, l.out_h, l.out_c, (2.0 * l.n * l.size*l.size*l.c/l.groups * l.out_h*l.out_w)/1000000000.);
 
     return l;
 }
