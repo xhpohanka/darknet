@@ -49,16 +49,16 @@ static float get_pixel(image m, int x, int y, int c)
     assert(x < m.w && y < m.h && c < m.c);
     return m.data[c*m.h*m.w + y*m.w + x];
 }
-static float get_pixel_extend(image m, int x, int y, int c)
+static float get_pixel_extend(image m, int x, int y, int c, float fill)
 {
-    if(x < 0 || x >= m.w || y < 0 || y >= m.h) return 0;
+    if(x < 0 || x >= m.w || y < 0 || y >= m.h) return fill;
     /*
     if(x < 0) x = 0;
     if(x >= m.w) x = m.w-1;
     if(y < 0) y = 0;
     if(y >= m.h) y = m.h-1;
     */
-    if(c < 0 || c >= m.c) return 0;
+    if(c < 0 || c >= m.c) return fill;
     return get_pixel(m, x, y, c);
 }
 static void set_pixel(image m, int x, int y, int c, float val)
@@ -73,7 +73,7 @@ static void add_pixel(image m, int x, int y, int c, float val)
     m.data[c*m.h*m.w + y*m.w + x] += val;
 }
 
-static float bilinear_interpolate(image im, float x, float y, int c)
+static float bilinear_interpolate(image im, float x, float y, int c, float fill)
 {
     int ix = (int) floorf(x);
     int iy = (int) floorf(y);
@@ -81,10 +81,10 @@ static float bilinear_interpolate(image im, float x, float y, int c)
     float dx = x - ix;
     float dy = y - iy;
 
-    float val = (1-dy) * (1-dx) * get_pixel_extend(im, ix, iy, c) + 
-        dy     * (1-dx) * get_pixel_extend(im, ix, iy+1, c) + 
-        (1-dy) *   dx   * get_pixel_extend(im, ix+1, iy, c) +
-        dy     *   dx   * get_pixel_extend(im, ix+1, iy+1, c);
+    float val = (1-dy) * (1-dx) * get_pixel_extend(im, ix, iy, c, fill) +
+        dy     * (1-dx) * get_pixel_extend(im, ix, iy+1, c, fill) +
+        (1-dy) *   dx   * get_pixel_extend(im, ix+1, iy, c, fill) +
+        dy     *   dx   * get_pixel_extend(im, ix+1, iy+1, c, fill);
     return val;
 }
 
@@ -96,7 +96,7 @@ void composite_image(image source, image dest, int dx, int dy)
         for(y = 0; y < source.h; ++y){
             for(x = 0; x < source.w; ++x){
                 float val = get_pixel(source, x, y, k);
-                float val2 = get_pixel_extend(dest, dx+x, dy+y, k);
+                float val2 = get_pixel_extend(dest, dx+x, dy+y, k, 0);
                 set_pixel(dest, dx+x, dy+y, k, val * val2);
             }
         }
@@ -110,7 +110,7 @@ image border_image(image a, int border)
     for(k = 0; k < b.c; ++k){
         for(y = 0; y < b.h; ++y){
             for(x = 0; x < b.w; ++x){
-                float val = get_pixel_extend(a, x - border, y - border, k);
+                float val = get_pixel_extend(a, x - border, y - border, k, 0);
                 if(x - border < 0 || x - border >= a.w || y - border < 0 || y - border >= a.h) val = 1;
                 set_pixel(b, x, y, k, val);
             }
@@ -838,7 +838,7 @@ void place_image(image im, int w, int h, int dx, int dy, image canvas)
             for(x = 0; x < w; ++x){
                 float rx = ((float)x / w) * im.w;
                 float ry = ((float)y / h) * im.h;
-                float val = bilinear_interpolate(im, rx, ry, c);
+                float val = bilinear_interpolate(im, rx, ry, c, 0);
                 set_pixel(canvas, x + dx, y + dy, c, val);
             }
         }
@@ -865,7 +865,7 @@ image rotate_crop_image(image im, float rad, float s, int w, int h, float dx, fl
             for(x = 0; x < w; ++x){
                 float rx = cos(rad)*((x - w/2.)/s*aspect + dx/s*aspect) - sin(rad)*((y - h/2.)/s + dy/s) + cx;
                 float ry = sin(rad)*((x - w/2.)/s*aspect + dx/s*aspect) + cos(rad)*((y - h/2.)/s + dy/s) + cy;
-                float val = bilinear_interpolate(im, rx, ry, c);
+                float val = bilinear_interpolate(im, rx, ry, c, 0);
                 set_pixel(rot, x, y, c, val);
             }
         }
@@ -873,7 +873,7 @@ image rotate_crop_image(image im, float rad, float s, int w, int h, float dx, fl
     return rot;
 }
 
-image rotate_image(image im, float rad)
+image rotate_image(image im, float rad, float fill)
 {
     int x, y, c;
     float cx = im.w/2.;
@@ -884,7 +884,7 @@ image rotate_image(image im, float rad)
             for(x = 0; x < im.w; ++x){
                 float rx = cos(rad)*(x-cx) - sin(rad)*(y-cy) + cx;
                 float ry = sin(rad)*(x-cx) + cos(rad)*(y-cy) + cy;
-                float val = bilinear_interpolate(im, rx, ry, c);
+                float val = bilinear_interpolate(im, rx, ry, c, fill);
                 set_pixel(rot, x, y, c, val);
             }
         }

@@ -39,7 +39,6 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
 
     int classes = l.classes;
     float jitter = l.jitter;
-    float jitter_shift = l.jitter_shift;
 
     list *plist = get_paths(train_images);
     //int N = plist->size;
@@ -52,13 +51,13 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     args.m = plist->size;
     args.classes = classes;
     args.jitter = jitter;
-    args.jitter_shift = jitter_shift;
     args.num_boxes = l.max_boxes;
     args.d = &buffer;
     args.type = DETECTION_DATA;
     //args.type = INSTANCE_DATA;
     args.threads = 64;
     args.c = net->c;
+    args.angle = net->angle;
 
     pthread_t load_thread = load_data(args);
     double time;
@@ -98,7 +97,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
            printf("loaded: %f %f %f %f\n", b.x, b.y, b.w, b.h);
            }
          */
-        /*
+#if 0
         int zz;
         for(zz = 0; zz < train.X.rows; ++zz){
             image im = float_to_image(net->w, net->h, 3, train.X.vals[zz]);
@@ -113,7 +112,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
             cvWaitKey(0);
             save_image(im, "truth11");
         }
-        */
+#endif
 
         printf("Loaded: %lf seconds\n", what_time_is_it_now()-time);
 

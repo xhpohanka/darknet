@@ -169,7 +169,6 @@ struct layer{
     float dot;
     float angle;
     float jitter;
-    float jitter_shift;
     float saturation;
     float exposure;
     float shift;
@@ -583,7 +582,6 @@ typedef struct load_args{
     int center;
     int coords;
     float jitter;
-    float jitter_shift;
     float angle;
     float aspect;
     float saturation;
@@ -754,7 +752,7 @@ void fill_image(image m, float s);
 image grayscale_image(image im);
 void rotate_image_cw(image im, int times);
 double what_time_is_it_now();
-image rotate_image(image m, float rad);
+image rotate_image(image m, float rad, float fill);
 void visualize_network(network *net);
 float box_iou(box a, box b);
 data load_all_cifar10();

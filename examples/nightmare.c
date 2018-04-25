@@ -404,7 +404,7 @@ void run_nightmare(int argc, char **argv)
         //cvWaitKey(0);
 
         if(rotate){
-            image rot = rotate_image(im, rotate);
+            image rot = rotate_image(im, rotate, 0);
             free_image(im);
             im = rot;
         }
