@@ -229,7 +229,8 @@ void correct_boxes(box_label *boxes, int n, float dx, float dy, float sx, float 
             boxes[i].y = (boxes[i].x - cx) * sin(phi) + (boxes[i].y - cy) * cos(phi) + cy;
         }
 
-
+        boxes[i].x = constrain(0, 0.9999, boxes[i].x);
+        boxes[i].y = constrain(0, 0.9999, boxes[i].y);
         boxes[i].w = constrain(0, 1, boxes[i].w);
         boxes[i].h = constrain(0, 1, boxes[i].h);
     }

@@ -198,7 +198,7 @@ void forward_yolo_layer(const layer l, network net)
             if(!truth.x)
                 break;
 
-            int class = net.truth[t*(l.coords + 1) + b*l.truths + l.coords];
+            int class = net.truth[t*(4 + 1) + b*l.truths + 4];
             if (class < 0 || class >= l.classes)
                 continue;
 
