@@ -195,7 +195,17 @@ void forward_yolo_layer(const layer l, network net)
         for(t = 0; t < l.max_boxes; ++t){
             box truth = float_to_box(net.truth + t*(4 + 1) + b*l.truths, 1);
 
-            if(!truth.x) break;
+            if(!truth.x)
+                break;
+
+            int class = net.truth[t*(l.coords + 1) + b*l.truths + l.coords];
+            if (class < 0 || class >= l.classes)
+                continue;
+
+            // nebudem ucit pidiobjekty
+            if (truth.w * net.w < l.min_size || truth.h * net.h < l.min_size)
+                continue;
+
             float best_iou = 0;
             int best_n = 0;
             i = (truth.x * l.w);
