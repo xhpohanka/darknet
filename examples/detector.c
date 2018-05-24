@@ -236,6 +236,27 @@ void print_imagenet_detections(FILE *fp, int id, detection *dets, int total, int
     }
 }
 
+void print_detector_labels(char *prefix, char *id, detection *dets, int total, int classes, int w, int h)
+{
+    int i, j;
+    char buff[1024];
+    snprintf(buff, 1024, "%s/%s.txt", prefix, id);
+    FILE *fp = fopen(buff, "w");
+
+    for(i = 0; i < total; ++i){
+        float cx = dets[i].bbox.x / w;
+        float cy = dets[i].bbox.y / h;
+        float bw = dets[i].bbox.w / w;
+        float bh = dets[i].bbox.h / h;
+
+        for(j = 0; j < classes; ++j){
+            if (dets[i].prob[j]) fprintf(fp, "%d %f %f %f %f\n", j, cx, cy, bw, bh);
+        }
+    }
+
+    fclose(fp);
+}
+
 void validate_detector_flip(char *datacfg, char *cfgfile, char *weightfile, char *outfile)
 {
     int j;
@@ -405,6 +426,7 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
     FILE **fps = 0;
     int coco = 0;
     int imagenet = 0;
+    int labels = 0;
     if(0==strcmp(type, "coco")){
         if(!outfile) outfile = "coco_results";
         snprintf(buff, 1024, "%s/%s.json", prefix, outfile);
@@ -417,6 +439,8 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
         fp = fopen(buff, "w");
         imagenet = 1;
         classes = 200;
+    } else if(0==strcmp(type, "labels")){
+        labels = 1;
     } else {
         if(!outfile) outfile = "comp4_det_test_";
         fps = calloc(classes, sizeof(FILE *));
@@ -520,6 +544,8 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
                 print_cocos(fp, path, dets, nboxes, classes, w, h);
             } else if (imagenet){
                 print_imagenet_detections(fp, i+t-nthreads+1, dets, nboxes, classes, w, h);
+            } else if (labels) {
+                print_detector_labels(prefix, id, dets, nboxes, classes, w, h);
             } else {
                 print_detector_detections(fps, id, dets, nboxes, classes, w, h);
             }
