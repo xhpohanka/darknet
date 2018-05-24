@@ -494,12 +494,14 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
 
         args.im = &buf[t];
         args.resized = &buf_resized[t];
+
+        if (video) {
 #if defined OPENCV
-        if (video)
             vpos[t] = cvGetCaptureProperty(args.cap, CV_CAP_PROP_POS_FRAMES);
+#endif
+        }
         else
             args.path = paths[i+t];
-#endif
         thr[t] = load_data_in_thread(args);
     }
     double start = what_time_is_it_now();
@@ -513,12 +515,15 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
         for(t = 0; t < nthreads && i+t < m; ++t){
             args.im = &buf[t];
             args.resized = &buf_resized[t];
+
+            if (video) {
 #if defined OPENCV
-            if (video)
                 vpos[t] = (unsigned long long) cvGetCaptureProperty(args.cap, CV_CAP_PROP_POS_FRAMES);
+#endif
+            }
             else
                 args.path = paths[i+t];
-#endif
+
             thr[t] = load_data_in_thread(args);
         }
         for(t = 0; t < nthreads && i+t-nthreads < m; ++t){
@@ -658,6 +663,7 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
     char buff[256];
     char *input = buff;
     float nms=.45;
+    nms = 0;
     while(1){
         if(filename){
             strncpy(input, filename, 256);
@@ -686,7 +692,8 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
         //printf("%d\n", nboxes);
         //if (nms) do_nms_obj(boxes, probs, l.w*l.h*l.n, l.classes, nms);
         if (nms) do_nms_sort(dets, nboxes, l.classes, nms);
-        draw_detections(im, dets, nboxes, thresh, names, alphabet, l.classes, 0);
+//        draw_detections(im, dets, nboxes, thresh, names, alphabet, l.classes, 0);
+        draw_detections(im, dets, nboxes, thresh, names, NULL, l.classes, 0);
         free_detections(dets, nboxes);
         if(outfile){
             save_image(im, outfile);
