@@ -166,7 +166,11 @@ void forward_yolo_layer(const layer l, network net)
                     int best_t = 0;
                     for(t = 0; t < l.max_boxes; ++t){
                         box truth = float_to_box(net.truth + t*(4 + 1) + b*l.truths, 1);
-                        if(!truth.x) break;
+                        int class = net.truth[t*(4 + 1) + b*l.truths + 4];
+                        if(!truth.x)
+                            break;
+//                        if(class >= l.classes) // s noobjektama by to pak odnaucovalo objektovitost
+//                            break;
                         float iou = box_iou(pred, truth);
                         if (iou > best_iou) {
                             best_iou = iou;
@@ -176,13 +180,15 @@ void forward_yolo_layer(const layer l, network net)
                     int obj_index = entry_index(l, b, n*l.w*l.h + j*l.w + i, 4);
                     avg_anyobj += l.output[obj_index];
                     l.delta[obj_index] = 0 - l.output[obj_index];
-                    if (best_iou > l.ignore_thresh) {
+                    int class = net.truth[best_t*(4 + 1) + b*l.truths + 4];
+                    if (best_iou > l.ignore_thresh && class >= 0) { // yolov3 ma ignore_thresh 0.5
                         l.delta[obj_index] = 0;
                     }
-                    if (best_iou > l.truth_thresh) {
-                        l.delta[obj_index] = 1 - l.output[obj_index];
+                    if (class >= l.classes) // pokud byl nejlepsi prekryv s noobjektem, tak neuc
+                        l.delta[obj_index] = 0;
+                    if (best_iou > l.truth_thresh && class < l.classes) { // yolov3 ma truth_thresh 1.0, takze tahle podminka neni splnena nikdy
+                        l.delta[obj_index] = ((class < 0) ? 0 : 1) - l.output[obj_index];
 
-                        int class = net.truth[best_t*(4 + 1) + b*l.truths + 4];
                         if (l.map) class = l.map[class];
                         int class_index = entry_index(l, b, n*l.w*l.h + j*l.w + i, 4 + 1);
                         delta_yolo_class(l.output, l.delta, class_index, class, l.classes, l.w*l.h, 0);
@@ -199,7 +205,7 @@ void forward_yolo_layer(const layer l, network net)
                 break;
 
             int class = net.truth[t*(4 + 1) + b*l.truths + 4];
-            if (class < 0 || class >= l.classes)
+            if (class <= -l.classes || class >= l.classes) // muzu mit anotovane tezke protipriklady
                 continue;
 
             // nebudem ucit pidiobjekty
@@ -230,9 +236,8 @@ void forward_yolo_layer(const layer l, network net)
 
                 int obj_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 4);
                 avg_obj += l.output[obj_index];
-                l.delta[obj_index] = 1 - l.output[obj_index];
+                l.delta[obj_index] = ((class < 0) ? 0 : 1) - l.output[obj_index]; // tezky protipriklad odnaucuje i objektovitost
 
-                int class = net.truth[t*(4 + 1) + b*l.truths + 4];
                 if (l.map) class = l.map[class];
                 int class_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 4 + 1);
                 delta_yolo_class(l.output, l.delta, class_index, class, l.classes, l.w*l.h, &avg_cat);
