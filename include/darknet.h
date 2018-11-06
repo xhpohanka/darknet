@@ -340,6 +340,7 @@ struct layer{
     struct layer *wg;
 
     tree *softmax_tree;
+    void *priv;
 
     size_t workspace_size;
 
@@ -487,6 +488,8 @@ typedef struct network{
     float saturation;
     float hue;
     int random;
+    int lrm_k;
+    float lrm_nms;
 
     int gpu_index;
     tree *hierarchy;

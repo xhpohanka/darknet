@@ -10,6 +10,28 @@
 #include <string.h>
 #include <stdlib.h>
 
+struct cost_id {
+    int entry_index;
+    float val;
+    box bbox;
+};
+static int cost_ids_cmp(const void *a, const void *b)
+{
+    struct cost_id *av = (struct cost_id *) a;
+    struct cost_id *bv = (struct cost_id *) b;
+    float diff = bv->val - av->val;
+    if (diff < 0)
+        return -1;
+    else if (diff > 0)
+        return 1;
+    else
+        return 0;
+}
+static int cost_ids_cmp_nms(const void *a, const void *b)
+{
+    return cost_ids_cmp(a, b);
+}
+
 layer make_yolo_layer(int batch, int w, int h, int n, int total, int *mask, int classes)
 {
     int i;
@@ -53,6 +75,7 @@ layer make_yolo_layer(int batch, int w, int h, int n, int total, int *mask, int 
     l.output_gpu = cuda_make_array(l.output, batch*l.outputs);
     l.delta_gpu = cuda_make_array(l.delta, batch*l.outputs);
 #endif
+    l.priv = (void *) malloc(l.h * l.w * l.n * sizeof(struct cost_id));
 
     fprintf(stderr, "detection\n");
     srand(0);
@@ -70,6 +93,8 @@ void resize_yolo_layer(layer *l, int w, int h)
 
     l->output = realloc(l->output, l->batch*l->outputs*sizeof(float));
     l->delta = realloc(l->delta, l->batch*l->outputs*sizeof(float));
+
+    l->priv = (void *) realloc(l->priv, l->h * l->w * l->n * sizeof(struct cost_id));
 
 #ifdef GPU
     cuda_free(l->delta_gpu);
@@ -129,6 +154,69 @@ static int entry_index(layer l, int batch, int location, int entry)
     return batch*l.outputs + n*l.w*l.h*(4+l.classes+1) + entry*l.w*l.h + loc;
 }
 
+static void do_nms_lrm(struct cost_id *dets, int total, int classes, float thresh)
+{
+    int i, j;
+
+    qsort(dets, total, sizeof(struct cost_id), cost_ids_cmp_nms);
+    for(i = 0; i < total; ++i){
+        if(dets[i].val == 0)
+            continue;
+        box a = dets[i].bbox;
+        for(j = i+1; j < total; ++j){
+            box b = dets[j].bbox;
+            if (box_iou(a, b) > thresh){
+                dets[j].val = 0;
+            }
+        }
+    }
+}
+
+// seradim predikce podle loss
+// udelam nms (dava smysl delat nms jen pro jednu yolo vrstvu?)
+// necham jen k nejvetsich, ostatni dostanou delta = 0
+static void lrm(const layer l, network net)
+{
+    int b, j, i, n;
+
+    struct cost_id *costs = (struct cost_id *) l.priv;
+    // musim jet pro kazdej obrazek v batchi zvlast
+    for (b = 0; b < l.batch; ++b) {
+        int stride = l.w * l.h;
+
+        for (j = 0; j < l.h; ++j) {
+            for (i = 0; i < l.w; ++i) {
+                for (n = 0; n < l.n; ++n) {
+                    int index = entry_index(l, b, n*l.w*l.h + j*l.w + i, 0);
+
+                    float cost = 0;
+                    int k;
+                    for (k = 0; k < 4 + 1 + l.classes; ++k) {
+                        cost += l.delta[index + k*stride] * l.delta[index + k*stride];
+                    }
+
+                    int id = n + l.n * (i + l.w * j);
+                    costs[id].entry_index = index;
+                    costs[id].val = cost;
+                    costs[id].bbox = get_yolo_box(l.output, l.biases, l.mask[n], index, i, j, l.w, l.h, net.w, net.h, l.w*l.h);
+                }
+            }
+        }
+
+        if (net.lrm_nms > 0)
+            do_nms_lrm(costs, l.h * l.w * l.n, l.classes, net.lrm_nms);
+
+        qsort(costs, l.h * l.w * l.n, sizeof(struct cost_id), cost_ids_cmp);
+
+        for (i = net.lrm_k; i < l.h * l.w * l.n; ++i) {
+            int k;
+            for (k = 0; k < 4 + 1 + l.classes; ++k) {
+                l.delta[costs[i].entry_index + k*stride] = 0;
+            }
+        }
+    }
+}
+
 void forward_yolo_layer(const layer l, network net)
 {
     int i,j,b,t,n;
@@ -166,7 +254,7 @@ void forward_yolo_layer(const layer l, network net)
                     int best_t = 0;
                     for(t = 0; t < l.max_boxes; ++t){
                         box truth = float_to_box(net.truth + t*(4 + 1) + b*l.truths, 1);
-                        int class = net.truth[t*(4 + 1) + b*l.truths + 4];
+//                        int class = net.truth[t*(4 + 1) + b*l.truths + 4];
                         if(!truth.x)
                             break;
 //                        if(class >= l.classes) // s noobjektama by to pak odnaucovalo objektovitost
@@ -250,6 +338,11 @@ void forward_yolo_layer(const layer l, network net)
             }
         }
     }
+
+    if (net.lrm_k > 0 && *net.seen > 0) {
+        lrm(l, net);
+    }
+
     *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);
     printf("Region %d Avg IOU: %f, Class: %f, Obj: %f, No Obj: %f, .5R: %f, .75R: %f,  count: %d\n", net.index, avg_iou/count, avg_cat/class_count, avg_obj/count, avg_anyobj/(l.w*l.h*l.n*l.batch), recall/count, recall75/count, count);
 }
@@ -273,8 +366,8 @@ void correct_yolo_boxes(detection *dets, int n, int w, int h, int netw, int neth
     }
     for (i = 0; i < n; ++i){
         box b = dets[i].bbox;
-        b.x =  (b.x - (netw - new_w)/2./netw) / ((float)new_w/netw); 
-        b.y =  (b.y - (neth - new_h)/2./neth) / ((float)new_h/neth); 
+        b.x =  (b.x - (netw - new_w)/2./netw) / ((float)new_w/netw);
+        b.y =  (b.y - (neth - new_h)/2./neth) / ((float)new_h/neth);
         b.w *= (float)netw/new_w;
         b.h *= (float)neth/new_h;
         if(!relative){

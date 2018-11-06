@@ -730,6 +730,9 @@ void parse_net_options(list *options, network *net)
     } else if (net->policy == POLY || net->policy == RANDOM){
     }
     net->max_batches = option_find_int(options, "max_batches", 0);
+
+    net->lrm_k = option_find_int_quiet(options, "lrm_k", 0);
+    net->lrm_nms = option_find_float_quiet(options, "lrm_nms", 0.5);
 }
 
 int is_network(section *s)
