@@ -66,9 +66,12 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     while(get_current_batch(net) < net->max_batches){
         if(l.random && count++%10 == 0){
             printf("Resizing\n");
-            int dim = (rand() % 10 + 10) * 32;
-            if (get_current_batch(net)+200 > net->max_batches) dim = 608;
-            //int dim = (rand() % 4 + 16) * 32;
+            int min = 13 - 1;
+            int max = 13 + 7;
+            int dim = (rand() % (max + 1 - min) + min) * 32;
+            if (get_current_batch(net)+200 > net->max_batches || get_current_batch(net) < 10)
+                dim = max * 32;
+
             printf("%d\n", dim);
             args.w = dim;
             args.h = dim;
@@ -131,7 +134,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
         avg_loss = avg_loss*.9 + loss*.1;
 
         i = get_current_batch(net);
-        printf("%ld: %f, %f avg, %f rate, %lf seconds, %d images\n", get_current_batch(net), loss, avg_loss, get_current_rate(net), what_time_is_it_now()-time, i*imgs);
+        printf("%d: %f, %f avg, %f rate, %lf seconds, %d images\n", i, loss, avg_loss, get_current_rate(net), what_time_is_it_now()-time, i*imgs);
         if(i%100==0){
 #ifdef GPU
             if(ngpus != 1) sync_nets(nets, ngpus, 0);
