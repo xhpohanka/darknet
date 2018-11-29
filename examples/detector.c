@@ -481,7 +481,7 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
     int t;
 
     float thresh = .005;
-    float nms = .45;
+    float nms = .2;
 
     int nthreads = 4;
     if (video)
