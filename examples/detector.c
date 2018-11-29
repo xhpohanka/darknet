@@ -196,10 +196,11 @@ static void print_cocos(FILE *fp, char *image_path, detection *dets, int num_box
     }
 }
 
-void print_detector_detections(FILE **fps, char *id, detection *dets, int total, int classes, int w, int h)
+void print_detector_detections(FILE **fps, char *id, detection *dets, int total, int classes, int w, int h, int obj)
 {
     int i, j;
     for(i = 0; i < total; ++i){
+#if 0
         float xmin = dets[i].bbox.x - dets[i].bbox.w/2. + 1;
         float xmax = dets[i].bbox.x + dets[i].bbox.w/2. + 1;
         float ymin = dets[i].bbox.y - dets[i].bbox.h/2. + 1;
@@ -214,7 +215,26 @@ void print_detector_detections(FILE **fps, char *id, detection *dets, int total,
             if (dets[i].prob[j]) fprintf(fps[j], "%s %f %f %f %f %f\n", id, dets[i].prob[j],
                     xmin, ymin, xmax, ymax);
         }
+#else
+        float cx = dets[i].bbox.x / w;
+        float cy = dets[i].bbox.y / h;
+        float bw = dets[i].bbox.w / w;
+        float bh = dets[i].bbox.h / h;
+
+        if (obj) {
+            j = 0;
+            if (dets[i].objectness) fprintf(fps[j], "%s %f %f %f %f %f\n", id, dets[i].objectness, cx, cy, bw, bh);
+        }
+        else {
+            for(j = 0; j < classes; ++j){
+                if (dets[i].prob[j]) fprintf(fps[j], "%s %f %f %f %f %f\n", id, dets[i].prob[j], cx, cy, bw, bh);
+            }
+
+        }
+#endif
     }
+
+    // otazka je jestli si tu nevypsat i soubory, kde nebyla zadna detekce
 }
 
 void print_imagenet_detections(FILE *fp, int id, detection *dets, int total, int classes, int w, int h)
@@ -371,7 +391,7 @@ void validate_detector_flip(char *datacfg, char *cfgfile, char *weightfile, char
             } else if (imagenet){
                 print_imagenet_detections(fp, i+t-nthreads+1, dets, num, classes, w, h);
             } else {
-                print_detector_detections(fps, id, dets, num, classes, w, h);
+                print_detector_detections(fps, id, dets, num, classes, w, h, 0);
             }
             free_detections(dets, num);
             free(id);
@@ -430,6 +450,7 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
     int coco = 0;
     int imagenet = 0;
     int labels = 0;
+    int only_obj = 0;
     if(0==strcmp(type, "coco")){
         if(!outfile) outfile = "coco_results";
         snprintf(buff, 1024, "%s/%s.json", prefix, outfile);
@@ -444,6 +465,8 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
         classes = 200;
     } else if(0==strcmp(type, "labels")){
         labels = 1;
+    } else if(0==strcmp(type, "only_obj")) {
+        only_obj = 1;
     } else {
         if(!outfile) outfile = "comp4_det_test_";
         fps = calloc(classes, sizeof(FILE *));
@@ -547,7 +570,12 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
             int h = val[t].h;
             int nboxes = 0;
             detection *dets = get_network_boxes(net, w, h, thresh, .5, map, 0, &nboxes);
-            if (nms) do_nms_sort(dets, nboxes, classes, nms);
+            if (nms) {
+                if (only_obj)
+                    do_nms_obj(dets, nboxes, classes, nms);
+                else
+                    do_nms_sort(dets, nboxes, classes, nms);
+            }
             if (coco){
                 print_cocos(fp, path, dets, nboxes, classes, w, h);
             } else if (imagenet){
@@ -555,7 +583,10 @@ void validate_detector(char *datacfg, char *cfgfile, char *weightfile, char *out
             } else if (labels) {
                 print_detector_labels(prefix, id, dets, nboxes, classes, w, h);
             } else {
-                print_detector_detections(fps, id, dets, nboxes, classes, w, h);
+                if (only_obj)
+                    print_detector_detections(fps, path, dets, nboxes, classes, w, h, 1);
+                else
+                    print_detector_detections(fps, path, dets, nboxes, classes, w, h, 0);
             }
             free_detections(dets, nboxes);
             if (!video)
