@@ -252,7 +252,7 @@ void forward_yolo_layer(const layer l, network net)
                     int box_index = entry_index(l, b, n*l.w*l.h + j*l.w + i, 0);
                     box pred = get_yolo_box(l.output, l.biases, l.mask[n], box_index, i, j, l.w, l.h, net.w, net.h, l.w*l.h);
                     float best_iou = 0;
-                    int best_t = 0;
+                    int best_t = -1;
                     for(t = 0; t < l.max_boxes; ++t){
                         box truth = float_to_box(net.truth + t*(4 + 1) + b*l.truths, 1);
 //                        int class = net.truth[t*(4 + 1) + b*l.truths + 4];
@@ -270,10 +270,10 @@ void forward_yolo_layer(const layer l, network net)
                     avg_anyobj += l.output[obj_index];
                     l.delta[obj_index] = 0 - l.output[obj_index];
                     int class = net.truth[best_t*(4 + 1) + b*l.truths + 4];
-                    if (best_iou > l.ignore_thresh && class >= 0) { // yolov3 ma ignore_thresh 0.5
+                    if (best_iou > l.ignore_thresh && class >= 0) // yolov3 ma ignore_thresh 0.5
                         l.delta[obj_index] = 0;
-                    }
-                    if (class >= l.classes) // pokud byl nejlepsi prekryv s noobjektem, tak neuc
+
+                    if (best_iou > 0.03 && class >= l.classes) // pokud byl nejlepsi prekryv s noobjektem, tak neuc
                         l.delta[obj_index] = 0;
                     if (best_iou > l.truth_thresh) { // yolov3 ma truth_thresh 1.0, takze tahle podminka neni splnena nikdy
                         if (class < l.classes) {
