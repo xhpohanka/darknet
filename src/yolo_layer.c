@@ -277,14 +277,16 @@ void forward_yolo_layer(const layer l, network net)
                         l.delta[obj_index] = 0;
                     if (best_iou > l.truth_thresh) { // yolov3 ma truth_thresh 1.0, takze tahle podminka neni splnena nikdy
                         if (class < l.classes) {
-                            l.delta[obj_index] = 1 - l.output[obj_index];
-
                             if (l.map) class = l.map[class];
                             int class_index = entry_index(l, b, n*l.w*l.h + j*l.w + i, 4 + 1);
                             delta_yolo_class(l.output, l.delta, class_index, class, l.classes, l.w*l.h, 0);
+
+                            if (class > 0) {
+                                l.delta[obj_index] = 1 - l.output[obj_index];
+                                box truth = float_to_box(net.truth + best_t*(4 + 1) + b*l.truths, 1);
+                                delta_yolo_box(truth, l.output, l.biases, l.mask[n], box_index, i, j, l.w, l.h, net.w, net.h, l.delta, (2-truth.w*truth.h), l.w*l.h);
+                            }
                         }
-                        box truth = float_to_box(net.truth + best_t*(4 + 1) + b*l.truths, 1);
-                        delta_yolo_box(truth, l.output, l.biases, l.mask[n], box_index, i, j, l.w, l.h, net.w, net.h, l.delta, (2-truth.w*truth.h), l.w*l.h);
                     }
                 }
             }
