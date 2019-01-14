@@ -213,7 +213,7 @@ void pm(int M, int N, float *A)
     printf("\n");
 }
 
-void find_replace(char *str, char *orig, char *rep, char *output)
+void find_replace(char *str, const char *orig, const char *rep, char *output)
 {
     char buffer[4096] = {0};
     char *p;

@@ -1,4 +1,5 @@
 #include "darknet.h"
+#include "utils.h"
 
 #include <stdio.h>
 
@@ -45,6 +46,7 @@ void train_coco(char *cfgfile, char *weightfile)
     args.num_boxes = side;
     args.d = &buffer;
     args.type = REGION_DATA;
+    args.labeldir = "labels";
 
     args.angle = net->angle;
     args.exposure = net->exposure;

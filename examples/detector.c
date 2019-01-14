@@ -5,11 +5,23 @@
 static int coco_ids[] = {1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,27,28,31,32,33,34,35,36,37,38,39,40,41,42,43,44,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,67,70,72,73,74,75,76,77,78,79,80,81,82,84,85,86,87,88,89,90};
 
 
-void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, int ngpus, int clear)
+void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, int ngpus, int clear,
+        char *backup_directory, char *labeldir)
 {
     list *options = read_data_cfg(datacfg);
     char *train_images = option_find_str(options, "train", "data/train.list");
-    char *backup_directory = option_find_str(options, "backup", "/backup/");
+    if (!backup_directory)
+        backup_directory = option_find_str(options, "backup", "/backup/");
+    if (!labeldir)
+        labeldir = option_find_str(options, "labeldir", "labels");
+
+    char cmd[128];
+    sprintf(cmd, "mkdir -p %s", backup_directory);
+    system(cmd);
+    sprintf(cmd, "cp %s %s", datacfg, backup_directory);
+    system(cmd);
+    sprintf(cmd, "cp %s %s", cfgfile, backup_directory);
+    system(cmd);
 
     srand(time(0));
     char *base = basecfg(cfgfile);
@@ -20,7 +32,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     srand(time(0));
     int seed = rand();
     int i;
-    for(i = 0; i < ngpus; ++i){
+    for(i = 0; i < ngpus; ++i) {
         srand(seed);
 #ifdef GPU
         cuda_set_device(gpus[i]);
@@ -58,6 +70,7 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     args.threads = 64;
     args.c = net->c;
     args.angle = net->angle;
+    args.labeldir = labeldir;
 
     pthread_t load_thread = load_data(args);
     double time;
@@ -925,6 +938,8 @@ void run_detector(int argc, char **argv)
     int cam_index = find_int_arg(argc, argv, "-c", 0);
     int frame_skip = find_int_arg(argc, argv, "-s", 0);
     int avg = find_int_arg(argc, argv, "-avg", 3);
+    char *backupdir = find_char_arg(argc, argv, "-backup", 0);
+    char *labeldir = find_char_arg(argc, argv, "-labeldir", 0);
     if(argc < 4){
         fprintf(stderr, "usage: %s %s [train/test/valid] [cfg] [weights (optional)]\n", argv[0], argv[1]);
         return;
@@ -965,7 +980,7 @@ void run_detector(int argc, char **argv)
     char *weights = (argc > 5) ? argv[5] : 0;
     char *filename = (argc > 6) ? argv[6]: 0;
     if(0==strcmp(argv[2], "test")) test_detector(datacfg, cfg, weights, filename, thresh, hier_thresh, outfile, fullscreen);
-    else if(0==strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear);
+    else if(0==strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear, backupdir, labeldir);
     else if(0==strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "valid2")) validate_detector_flip(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "recall")) validate_detector_recall(cfg, weights);
