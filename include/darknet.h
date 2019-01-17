@@ -596,6 +596,7 @@ typedef struct load_args{
     data_type type;
     tree *hierarchy;
     const char *labeldir;
+    int minlabeled;
 #if !defined __CUDACC__
 #if defined OPENCV
     CvCapture *cap;

@@ -62,6 +62,35 @@ char **get_random_paths(char **paths, int n, int m)
     return random_paths;
 }
 
+int get_num_boxes(char *path, const char *labeldir);
+char **get_random_paths_checked(char **paths, int n, int m, int min_labeled, const char *labeldir)
+{
+    char **random_paths = calloc(n, sizeof(char*));
+    int i;
+    int labeled = 0;
+    pthread_mutex_lock(&mutex);
+    for(i = 0; i < n; ++i) {
+        int index = -1;
+        if (labeled < min_labeled) {
+            int cnt = 0;
+            while (cnt == 0) {
+                index = rand()%m;
+                cnt = get_num_boxes(paths[index], labeldir);
+            }
+            labeled++;
+        }
+        else {
+            index = rand()%m;
+        }
+
+        random_paths[i] = paths[index];
+
+        //if(i == 0) printf("%s\n", paths[index]);
+    }
+    pthread_mutex_unlock(&mutex);
+    return random_paths;
+}
+
 char **find_replace_paths(char **paths, int n, char *find, char *replace)
 {
     char **replace_paths = calloc(n, sizeof(char*));
@@ -429,6 +458,19 @@ void fill_truth_iseg(char *path, int num_boxes, float *truth, int classes, int w
     }
     fclose(file);
     free_image(part);
+}
+
+int get_num_boxes(char *path, const char *labeldir)
+{
+    char labelpath[4096];
+    replace_label_path(path, labeldir, labelpath);
+
+    int count = 0;
+    box_label *boxes = read_boxes(labelpath, &count);
+    free(boxes);
+
+
+    return count;
 }
 
 
@@ -974,10 +1016,14 @@ data load_data_swag(char **paths, const char *labeldir, int n, int classes, floa
     return d;
 }
 
-data load_data_detection(int n, char **paths, const char *labeldir, int m, int w, int h, int c, int boxes, int classes,
+data load_data_detection(int n, char **paths, const char *labeldir, int m, int minlabeled, int w, int h, int c, int boxes, int classes,
         float jitter, float angle, float hue, float saturation, float exposure)
 {
-    char **random_paths = get_random_paths(paths, n, m);
+    char **random_paths;
+    if (minlabeled <= 0)
+        random_paths = get_random_paths(paths, n, m);
+    else
+        random_paths = get_random_paths_checked(paths, n, m, minlabeled, labeldir);
     int i;
     data d = {0};
     d.shallow = 0;
@@ -1067,7 +1113,8 @@ void *load_thread(void *ptr)
     } else if (a.type == REGION_DATA){
         *a.d = load_data_region(a.n, a.paths, a.labeldir, a.m, a.w, a.h, a.num_boxes, a.classes, a.jitter, a.hue, a.saturation, a.exposure);
     } else if (a.type == DETECTION_DATA){
-        *a.d = load_data_detection(a.n, a.paths, a.labeldir, a.m, a.w, a.h, a.c, a.num_boxes, a.classes, a.jitter, a.angle, a.hue, a.saturation, a.exposure);
+        *a.d = load_data_detection(a.n, a.paths, a.labeldir, a.m, a.minlabeled, a.w, a.h, a.c,
+                a.num_boxes, a.classes, a.jitter, a.angle, a.hue, a.saturation, a.exposure);
     } else if (a.type == SWAG_DATA){
         *a.d = load_data_swag(a.paths, a.labeldir, a.n, a.classes, a.jitter);
     } else if (a.type == COMPARE_DATA){
@@ -1114,12 +1161,14 @@ void *load_threads(void *ptr)
     if (args.threads == 0) args.threads = 1;
     data *out = args.d;
     int total = args.n;
+    int minl_total = args.minlabeled;
     free(ptr);
     data *buffers = calloc(args.threads, sizeof(data));
     pthread_t *threads = calloc(args.threads, sizeof(pthread_t));
     for(i = 0; i < args.threads; ++i){
         args.d = buffers + i;
         args.n = (i+1) * total/args.threads - i * total/args.threads;
+        args.minlabeled = (i+1) * minl_total/args.threads - i * minl_total/args.threads;
         threads[i] = load_data_in_thread(args);
     }
     for(i = 0; i < args.threads; ++i){
