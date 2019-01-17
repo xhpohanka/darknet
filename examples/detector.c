@@ -43,6 +43,19 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     srand(time(0));
     network *net = nets[0];
 
+    float avg_losses[10][3];
+    layer *yls[10];
+    int yls_size = 0;
+    for (i = 0; i < net->n; ++i) {
+        if (net->layers[i].type == YOLO) {
+            yls[yls_size] = &net->layers[i];
+            avg_losses[yls_size][0] = -1;
+            avg_losses[yls_size][1] = -1;
+            avg_losses[yls_size][2] = -1;
+            yls_size++;
+        }
+    }
+
     int imgs = net->batch * net->subdivisions * ngpus;
     printf("Learning Rate: %g, Momentum: %g, Decay: %g\n", net->learning_rate, net->momentum, net->decay);
     data train, buffer;
@@ -147,6 +160,21 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
         avg_loss = avg_loss*.9 + loss*.1;
 
         i = get_current_batch(net);
+        printf("%d: %f, %f avg, %f rate, %lf seconds, %d images", i, loss, avg_loss, get_current_rate(net), what_time_is_it_now()-time, i*imgs);
+        int k;
+        for (k = 0; k < yls_size; k++) {
+            if (avg_losses[k][0] < 0) avg_losses[k][0] = yls[k]->losses[0];
+            if (avg_losses[k][0] < 0) avg_losses[k][2] = yls[k]->losses[1];
+            if (avg_losses[k][0] < 0) avg_losses[k][1] = yls[k]->losses[2];
+            avg_losses[k][0] = avg_losses[k][0]*.9 + yls[k]->losses[0];
+            avg_losses[k][1] = avg_losses[k][1]*.9 + yls[k]->losses[1];
+            avg_losses[k][2] = avg_losses[k][2]*.9 + yls[k]->losses[2];
+            printf(", ");
+            printf("%f (%f), ", yls[k]->losses[0], avg_losses[k][0]);
+            printf("%f (%f), ", yls[k]->losses[1], avg_losses[k][1]);
+            printf("%f (%f)", yls[k]->losses[2], avg_losses[k][2]);
+        }
+        printf("\n");
         printf("%d: %f, %f avg, %f rate, %lf seconds, %d images\n", i, loss, avg_loss, get_current_rate(net), what_time_is_it_now()-time, i*imgs);
         if(i%100==0){
 #ifdef GPU

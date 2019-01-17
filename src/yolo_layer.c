@@ -63,6 +63,7 @@ layer make_yolo_layer(int batch, int w, int h, int n, int total, int *mask, int 
     l.truths = 90*(4 + 1);
     l.delta = calloc(batch*l.outputs, sizeof(float));
     l.output = calloc(batch*l.outputs, sizeof(float));
+    l.losses = calloc(3, sizeof(float));
     for(i = 0; i < total*2; ++i){
         l.biases[i] = .5;
     }
@@ -235,6 +236,7 @@ void forward_yolo_layer(const layer l, network net)
 #endif
 
     memset(l.delta, 0, l.outputs * l.batch * sizeof(float));
+    memset(l.losses, 0, 3 * sizeof(float));
     if(!net.train) return;
     float avg_iou = 0;
     float recall = 0;
@@ -348,8 +350,21 @@ void forward_yolo_layer(const layer l, network net)
         lrm(l, net);
     }
 
-    *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);
-    printf("Region %d Avg IOU: %f, Class: %f, Obj: %f, No Obj: %f, .5R: %f, .75R: %f,  count: %d\n", net.index, avg_iou/count, avg_cat/class_count, avg_obj/count, avg_anyobj/(l.w*l.h*l.n*l.batch), recall/count, recall75/count, count);
+    for (b = 0; b < l.batch; ++b) {
+        for (n = 0; n < l.n; ++n) {
+            // location loss
+            l.losses[0] += pow(mag_array(l.delta + b * l.outputs + n * l.w * l.h * (l.classes + 4 + 1), l.w * l.h * 4), 2);
+            // objecness loss
+            l.losses[1] += pow(mag_array(l.delta + b * l.outputs + n * l.w * l.h * (l.classes + 4 + 1) + l.w * l.h * 4, l.w * l.h), 2);
+            // classification loss
+            l.losses[2] += pow(mag_array(l.delta + b * l.outputs + n * l.w * l.h * (l.classes + 4 + 1) + l.w * l.h * 5, l.w * l.h * l.classes), 2);
+        }
+    }
+
+    *(l.cost) = l.losses[0] + l.losses[1] + l.losses[2];
+    printf("Region %d Avg IOU: %f, Class: %f, Obj: %f, No Obj: %f, .5R: %f, .75R: %f,  count: %d, cost: %f\n",
+            net.index, avg_iou/count, avg_cat/class_count, avg_obj/count, avg_anyobj/(l.w*l.h*l.n*l.batch),
+            recall/count, recall75/count, count, *l.cost);
 }
 
 void backward_yolo_layer(const layer l, network net)

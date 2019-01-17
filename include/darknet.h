@@ -255,6 +255,7 @@ struct layer{
     float * loss;
     float * squared;
     float * norms;
+    float * losses;
 
     float * spatial_mean;
     float * mean;
