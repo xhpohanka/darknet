@@ -350,14 +350,51 @@ void forward_yolo_layer(const layer l, network net)
         lrm(l, net);
     }
 
+    float mean[3] = {0};
     for (b = 0; b < l.batch; ++b) {
         for (n = 0; n < l.n; ++n) {
             // location loss
-            l.losses[0] += pow(mag_array(l.delta + b * l.outputs + n * l.w * l.h * (l.classes + 4 + 1), l.w * l.h * 4), 2);
+            int entry = b * l.outputs + n * l.w * l.h * (l.classes + 4 + 1);
+            int count = l.w * l.h * 4;
+            l.losses[0] += pow(mag_array(l.delta + entry, count), 2);
+            for (j = 0; j < count; ++j)
+                mean[0] += l.delta[entry + j];
             // objecness loss
-            l.losses[1] += pow(mag_array(l.delta + b * l.outputs + n * l.w * l.h * (l.classes + 4 + 1) + l.w * l.h * 4, l.w * l.h), 2);
+            entry = b * l.outputs + n * l.w * l.h * (l.classes + 4 + 1) + l.w * l.h * 4;
+            count = l.w * l.h * 1;
+            l.losses[1] += pow(mag_array(l.delta + entry, count), 2);
+            for (j = 0; j < count; ++j)
+                mean[1] += l.delta[entry + j];
             // classification loss
-            l.losses[2] += pow(mag_array(l.delta + b * l.outputs + n * l.w * l.h * (l.classes + 4 + 1) + l.w * l.h * 5, l.w * l.h * l.classes), 2);
+            entry = b * l.outputs + n * l.w * l.h * (l.classes + 4 + 1) + l.w * l.h * 5;
+            count = l.w * l.h * l.classes;
+            l.losses[2] += pow(mag_array(l.delta + entry, count), 2);
+            for (j = 0; j < count; ++j)
+                mean[2] += l.delta[entry + j];
+        }
+    }
+    mean[0] /= l.outputs * l.batch;
+    mean[1] /= l.outputs * l.batch;
+    mean[2] /= l.outputs * l.batch;
+
+
+    for (b = 0; b < l.batch; ++b) {
+        for (n = 0; n < l.n; ++n) {
+            int entry = b * l.outputs + n * l.w * l.h * (l.classes + 4 + 1);
+            int count = l.w * l.h * 4;
+            for (j = 0; j < count; ++j)
+                l.delta[entry + j] += rand_normal() * 0.15 * mean[0];
+
+            entry = b * l.outputs + n * l.w * l.h * (l.classes + 4 + 1) + l.w * l.h * 4;
+            count = l.w * l.h * 1;
+            for (j = 0; j < count; ++j)
+                l.delta[entry + j] += rand_normal() * 0.15 * mean[1];
+
+
+            entry = b * l.outputs + n * l.w * l.h * (l.classes + 4 + 1) + l.w * l.h * 5;
+            count = l.w * l.h * l.classes;
+            for (j = 0; j < count; ++j)
+                l.delta[entry + j] += rand_normal() * 0.15 * mean[2];
         }
     }
 

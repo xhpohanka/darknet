@@ -84,6 +84,9 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     args.c = net->c;
     args.angle = net->angle;
     args.labeldir = labeldir;
+    args.minlabeled = imgs * 3 / 5;
+
+    int w_orig = net->w;
 
     pthread_t load_thread = load_data(args);
     double time;
@@ -92,8 +95,8 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
     while(get_current_batch(net) < net->max_batches){
         if(l.random && count++%10 == 0){
             printf("Resizing\n");
-            int min = 13 - 1;
-            int max = 13 + 7;
+            int min = w_orig / 32 - 1;
+            int max = w_orig / 32 + 7;
             int dim = (rand() % (max + 1 - min) + min) * 32;
             if (get_current_batch(net)+200 > net->max_batches || get_current_batch(net) < 10)
                 dim = max * 32;
@@ -163,19 +166,27 @@ void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, i
         printf("%d: %f, %f avg, %f rate, %lf seconds, %d images", i, loss, avg_loss, get_current_rate(net), what_time_is_it_now()-time, i*imgs);
         int k;
         for (k = 0; k < yls_size; k++) {
-            if (avg_losses[k][0] < 0) avg_losses[k][0] = yls[k]->losses[0];
-            if (avg_losses[k][0] < 0) avg_losses[k][2] = yls[k]->losses[1];
-            if (avg_losses[k][0] < 0) avg_losses[k][1] = yls[k]->losses[2];
-            avg_losses[k][0] = avg_losses[k][0]*.9 + yls[k]->losses[0];
-            avg_losses[k][1] = avg_losses[k][1]*.9 + yls[k]->losses[1];
-            avg_losses[k][2] = avg_losses[k][2]*.9 + yls[k]->losses[2];
+            float l[3];
+            // at jsme ve stejnym rozmeru jako celkova loss, tak je vahy potreba
+            // navahovat velikosti batche, navic se deli i poctem loss layeru
+            l[0] = yls[k]->losses[0] / net->batch / yls_size;
+            l[1] = yls[k]->losses[2] / net->batch / yls_size;
+            l[2] = yls[k]->losses[1] / net->batch / yls_size;
+
+            if (avg_losses[k][0] < 0) avg_losses[k][0] = l[0];
+            if (avg_losses[k][1] < 0) avg_losses[k][1] = l[1];
+            if (avg_losses[k][2] < 0) avg_losses[k][2] = l[2];
+            avg_losses[k][0] = avg_losses[k][0]*.9 + l[0]*0.1;
+            avg_losses[k][1] = avg_losses[k][1]*.9 + l[1]*0.1;
+            avg_losses[k][2] = avg_losses[k][2]*.9 + l[2]*0.1;
+
             printf(", ");
-            printf("%f (%f), ", yls[k]->losses[0], avg_losses[k][0]);
-            printf("%f (%f), ", yls[k]->losses[1], avg_losses[k][1]);
-            printf("%f (%f)", yls[k]->losses[2], avg_losses[k][2]);
+            printf("%f (%f), ", l[0], avg_losses[k][0]);
+            printf("%f (%f), ", l[1], avg_losses[k][1]);
+            printf("%f (%f)", l[2], avg_losses[k][2]);
         }
         printf("\n");
-        printf("%d: %f, %f avg, %f rate, %lf seconds, %d images\n", i, loss, avg_loss, get_current_rate(net), what_time_is_it_now()-time, i*imgs);
+
         if(i%100==0){
 #ifdef GPU
             if(ngpus != 1) sync_nets(nets, ngpus, 0);
