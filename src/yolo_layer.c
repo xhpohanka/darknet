@@ -256,7 +256,7 @@ void forward_yolo_layer(const layer l, network net)
                     float best_iou = 0;
                     int best_t = -1;
                     for(t = 0; t < l.max_boxes; ++t){
-                        box truth = float_to_box(net.truth + t*(4 + 1) + b*l.truths, 1);
+                        box truth = float_to_box(net.truth + t*(4 + 2) + b*l.truths, 1);
 //                        int class = net.truth[t*(4 + 1) + b*l.truths + 4];
                         if(!truth.x)
                             break;
@@ -271,7 +271,8 @@ void forward_yolo_layer(const layer l, network net)
                     int obj_index = entry_index(l, b, n*l.w*l.h + j*l.w + i, 4);
                     avg_anyobj += l.output[obj_index];
                     l.delta[obj_index] = 0 - l.output[obj_index];
-                    int class = net.truth[best_t*(4 + 1) + b*l.truths + 4];
+                    int class = net.truth[best_t*(4 + 2) + b*l.truths + 4];
+                    float conf = net.truth[best_t*(4 + 2) + b*l.truths + 5];
                     if (best_iou > l.ignore_thresh && class >= 0) // yolov3 ma ignore_thresh 0.5
                         l.delta[obj_index] = 0;
 
@@ -285,7 +286,7 @@ void forward_yolo_layer(const layer l, network net)
 
                             if (class > 0) {
                                 l.delta[obj_index] = 1 - l.output[obj_index];
-                                box truth = float_to_box(net.truth + best_t*(4 + 1) + b*l.truths, 1);
+                                box truth = float_to_box(net.truth + best_t*(4 + 2) + b*l.truths, 1);
                                 delta_yolo_box(truth, l.output, l.biases, l.mask[n], box_index, i, j, l.w, l.h, net.w, net.h, l.delta, (2-truth.w*truth.h), l.w*l.h);
                             }
                         }
@@ -294,14 +295,16 @@ void forward_yolo_layer(const layer l, network net)
             }
         }
         for(t = 0; t < l.max_boxes; ++t){
-            box truth = float_to_box(net.truth + t*(4 + 1) + b*l.truths, 1);
+            box truth = float_to_box(net.truth + t*(4 + 2) + b*l.truths, 1);
 
             if(!truth.x)
                 break;
 
-            int class = net.truth[t*(4 + 1) + b*l.truths + 4];
+            int class = net.truth[t*(4 + 2) + b*l.truths + 4];
             if (class <= -l.classes || class >= l.classes) // muzu mit anotovane tezke protipriklady
                 continue;
+
+            float conf = net.truth[t*(4 + 2) + b*l.truths + 5];
 
             // nebudem ucit pidiobjekty
             if (truth.w * net.w < l.min_size || truth.h * net.h < l.min_size)
@@ -331,7 +334,7 @@ void forward_yolo_layer(const layer l, network net)
 
                 int obj_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 4);
                 avg_obj += l.output[obj_index];
-                l.delta[obj_index] = ((class < 0) ? 0 : 1) - l.output[obj_index]; // tezky protipriklad odnaucuje i objektovitost
+                l.delta[obj_index] = ((class < 0) ? 0 : conf) - l.output[obj_index]; // tezky protipriklad odnaucuje i objektovitost
 
                 if (l.map) class = l.map[class];
                 int class_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 4 + 1);

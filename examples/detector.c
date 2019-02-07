@@ -5,6 +5,240 @@
 static int coco_ids[] = {1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,27,28,31,32,33,34,35,36,37,38,39,40,41,42,43,44,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,67,70,72,73,74,75,76,77,78,79,80,81,82,84,85,86,87,88,89,90};
 
 
+void train_detector_w_teacher(char *datacfg, char *cfgfile, char *weightfile, char *cfgfile_t, char *weightfile_t,
+        int *gpus, int ngpus, int clear,
+        char *backup_directory, char *labeldir)
+{
+#ifdef GPU
+    if (ngpus == 0 || ngpus % 2 != 0) {
+        printf("We need at least 2 GPUs (and even)\n");
+        return;
+    }
+#endif
+
+    list *options = read_data_cfg(datacfg);
+    char *train_images = option_find_str(options, "train", "data/train.list");
+    if (!backup_directory)
+        backup_directory = option_find_str(options, "backup", "/backup/");
+    if (!labeldir)
+        labeldir = option_find_str(options, "labeldir", "labels");
+
+    char cmd[128];
+    sprintf(cmd, "mkdir -p %s", backup_directory);
+    system(cmd);
+    sprintf(cmd, "cp %s %s", datacfg, backup_directory);
+    system(cmd);
+    sprintf(cmd, "cp %s %s", cfgfile, backup_directory);
+    system(cmd);
+
+    srand(time(0));
+    char *base = basecfg(cfgfile);
+    printf("%s\n", base);
+    float avg_loss = -1;
+
+    network **nets = calloc(ngpus, sizeof(network));
+
+    srand(time(0));
+    int seed = rand();
+    int i;
+    for(i = 0; i < ngpus; ++i) {
+        srand(seed);
+#ifdef GPU
+        cuda_set_device(gpus[i]);
+#endif
+        nets[i] = load_network(cfgfile, weightfile, clear);
+        nets[i]->learning_rate *= (ngpus / 2);
+    }
+    for(i = ngpus/2; i < ngpus; ++i) {
+#ifdef GPU
+        cuda_set_device(gpus[i]);
+#endif
+        nets[i] = load_network(cfgfile_t, weightfile_t, 0);
+    }
+
+    srand(time(0));
+
+    // chtelo by to overit, ze teacher net ma dostatecne podobnej vystup
+    network *net = nets[0];
+
+    float avg_losses[10][3];
+    layer *yls[10];
+    int yls_size = 0;
+    for (i = 0; i < net->n; ++i) {
+        if (net->layers[i].type == YOLO) {
+            yls[yls_size] = &net->layers[i];
+            avg_losses[yls_size][0] = -1;
+            avg_losses[yls_size][1] = -1;
+            avg_losses[yls_size][2] = -1;
+            yls_size++;
+        }
+    }
+
+    int imgs = net->batch * net->subdivisions * ngpus / 2;
+    printf("Learning Rate: %g, Momentum: %g, Decay: %g\n", net->learning_rate, net->momentum, net->decay);
+    data train, buffer;
+
+    layer l = net->layers[net->n - 1];
+
+    int classes = l.classes;
+    float jitter = l.jitter;
+
+    list *plist = get_paths(train_images);
+    //int N = plist->size;
+    char **paths = (char **)list_to_array(plist);
+
+    load_args args = get_base_args(net);
+    args.coords = l.coords;
+    args.paths = paths;
+    args.n = imgs;
+    args.m = plist->size;
+    args.classes = classes;
+    args.jitter = jitter;
+    args.num_boxes = l.max_boxes;
+    args.d = &buffer;
+    args.type = DETECTION_DATA;
+    //args.type = INSTANCE_DATA;
+    args.threads = 32;
+    args.c = net->c;
+    args.angle = net->angle;
+    args.labeldir = labeldir;
+    args.minlabeled = imgs * 3 / 5;
+
+    int w_orig = net->w;
+
+    pthread_t load_thread = load_data(args);
+    double time;
+    int count = 0;
+    //while(i*imgs < N*120){
+    while(get_current_batch(net) < net->max_batches){
+        if(l.random && count++%10 == 0){
+            printf("Resizing\n");
+            int min = w_orig / 32 - 1;
+            int max = w_orig / 32 + 7;
+            int dim = (rand() % (max + 1 - min) + min) * 32;
+            if (get_current_batch(net)+200 > net->max_batches || get_current_batch(net) < 10)
+                dim = max * 32;
+
+            printf("%d\n", dim);
+            args.w = dim;
+            args.h = dim;
+
+            pthread_join(load_thread, 0);
+            train = buffer;
+            free_data(train);
+            load_thread = load_data(args);
+
+            #pragma omp parallel for
+            for(i = 0; i < ngpus; ++i){
+                resize_network(nets[i], dim, dim);
+            }
+            net = nets[0];
+        }
+        time=what_time_is_it_now();
+        pthread_join(load_thread, 0);
+        train = buffer;
+        load_thread = load_data(args);
+
+        /*
+           int k;
+           for(k = 0; k < l.max_boxes; ++k){
+           box b = float_to_box(train.y.vals[10] + 1 + k*5);
+           if(!b.x) break;
+           printf("loaded: %f %f %f %f\n", b.x, b.y, b.w, b.h);
+           }
+         */
+#if 0
+        int zz;
+        for(zz = 0; zz < train.X.rows; ++zz){
+            image im = float_to_image(net->w, net->h, 3, train.X.vals[zz]);
+            int k;
+            for(k = 0; k < l.max_boxes; ++k){
+                box b = float_to_box(train.y.vals[zz] + k*5, 1);
+//                printf("%f %f %f %f\n", b.x, b.y, b.w, b.h);
+                if (b.x)
+                    draw_bbox(im, b, 1, 1, 0, 0);
+            }
+            show_image(im, "truth11");
+            cvWaitKey(0);
+            save_image(im, "truth11");
+        }
+#endif
+
+        printf("Loaded: %lf seconds\n", what_time_is_it_now()-time);
+
+        if(ngpus/2 == 1) {
+            network_predict(net, train.X.vals);
+        } else {
+            // TODO
+            printf("not implemented\n");
+            return;
+        }
+
+        time=what_time_is_it_now();
+        float loss = 0;
+#ifdef GPU
+        if(ngpus/2 == 1){
+            loss = train_network(net, train);
+        } else {
+            loss = train_networks(nets, ngpus, train, 4);
+        }
+#else
+        loss = train_network(net, train);
+#endif
+        if (avg_loss < 0) avg_loss = loss;
+        avg_loss = avg_loss*.9 + loss*.1;
+
+        i = get_current_batch(net);
+        printf("%d: %f, %f avg, %f rate, %lf seconds, %d images", i, loss, avg_loss, get_current_rate(net), what_time_is_it_now()-time, i*imgs);
+        int k;
+        for (k = 0; k < yls_size; k++) {
+            float l[3];
+            // at jsme ve stejnym rozmeru jako celkova loss, tak je vahy potreba
+            // navahovat velikosti batche, navic se deli i poctem loss layeru
+            l[0] = yls[k]->losses[0] / net->batch / yls_size;
+            l[1] = yls[k]->losses[2] / net->batch / yls_size;
+            l[2] = yls[k]->losses[1] / net->batch / yls_size;
+
+            if (avg_losses[k][0] < 0) avg_losses[k][0] = l[0];
+            if (avg_losses[k][1] < 0) avg_losses[k][1] = l[1];
+            if (avg_losses[k][2] < 0) avg_losses[k][2] = l[2];
+            avg_losses[k][0] = avg_losses[k][0]*.9 + l[0]*0.1;
+            avg_losses[k][1] = avg_losses[k][1]*.9 + l[1]*0.1;
+            avg_losses[k][2] = avg_losses[k][2]*.9 + l[2]*0.1;
+
+            printf(", ");
+            printf("%f (%f), ", l[0], avg_losses[k][0]);
+            printf("%f (%f), ", l[1], avg_losses[k][1]);
+            printf("%f (%f)", l[2], avg_losses[k][2]);
+        }
+        printf("\n");
+
+        if(i%100==0){
+#ifdef GPU
+            if(ngpus != 1) sync_nets(nets, ngpus, 0);
+#endif
+            char buff[256];
+            sprintf(buff, "%s/%s.backup", backup_directory, base);
+            save_weights(net, buff);
+        }
+        if(i%10000==0 || (i < 1000 && i%100 == 0) || (i >= (net->max_batches * 90/100) && i%1000 == 0)){
+#ifdef GPU
+            if(ngpus != 1) sync_nets(nets, ngpus, 0);
+#endif
+            char buff[256];
+            sprintf(buff, "%s/%s_%d.weights", backup_directory, base, i);
+            save_weights(net, buff);
+        }
+        free_data(train);
+    }
+#ifdef GPU
+    if(ngpus != 1) sync_nets(nets, ngpus, 0);
+#endif
+    char buff[256];
+    sprintf(buff, "%s/%s_final.weights", backup_directory, base);
+    save_weights(net, buff);
+}
+
 void train_detector(char *datacfg, char *cfgfile, char *weightfile, int *gpus, int ngpus, int clear,
         char *backup_directory, char *labeldir)
 {
@@ -1014,11 +1248,16 @@ void run_detector(int argc, char **argv)
     int fps = find_int_arg(argc, argv, "-fps", 0);
     //int class = find_int_arg(argc, argv, "-class", 0);
 
+    char *cfg_t = find_char_arg(argc, argv, "-cfg-t", NULL);
+    char *weights_t = find_char_arg(argc, argv, "-weights-t", NULL);
+
     char *datacfg = argv[3];
     char *cfg = argv[4];
     char *weights = (argc > 5) ? argv[5] : 0;
     char *filename = (argc > 6) ? argv[6]: 0;
     if(0==strcmp(argv[2], "test")) test_detector(datacfg, cfg, weights, filename, thresh, hier_thresh, outfile, fullscreen);
+    else if(0==strcmp(argv[2], "train_t")) train_detector_w_teacher(datacfg, cfg, weights, cfg_t, weights_t,
+            gpus, ngpus, clear, backupdir, labeldir);
     else if(0==strcmp(argv[2], "train")) train_detector(datacfg, cfg, weights, gpus, ngpus, clear, backupdir, labeldir);
     else if(0==strcmp(argv[2], "valid")) validate_detector(datacfg, cfg, weights, outfile);
     else if(0==strcmp(argv[2], "valid2")) validate_detector_flip(datacfg, cfg, weights, outfile);

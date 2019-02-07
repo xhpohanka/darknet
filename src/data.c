@@ -501,11 +501,12 @@ void fill_truth_detection(char *path, const char *labeldir, int num_boxes, float
             continue;
         }
 
-        truth[(i-sub)*5+0] = x;
-        truth[(i-sub)*5+1] = y;
-        truth[(i-sub)*5+2] = w;
-        truth[(i-sub)*5+3] = h;
-        truth[(i-sub)*5+4] = id;
+        truth[(i-sub)*6+0] = x;
+        truth[(i-sub)*6+1] = y;
+        truth[(i-sub)*6+2] = w;
+        truth[(i-sub)*6+3] = h;
+        truth[(i-sub)*6+4] = id;
+        truth[(i-sub)*6+5] = 1.0;
     }
     free(boxes);
 }
@@ -1032,7 +1033,7 @@ data load_data_detection(int n, char **paths, const char *labeldir, int m, int m
     d.X.vals = calloc(d.X.rows, sizeof(float*));
     d.X.cols = h*w*c;
 
-    d.y = make_matrix(n, 5*boxes);
+    d.y = make_matrix(n, 6*boxes);
     for(i = 0; i < n; ++i){
         image orig = load_image(random_paths[i], 0, 0, c);
         image sized = make_image(w, h, orig.c);
